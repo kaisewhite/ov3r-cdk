@@ -12,7 +12,7 @@ export const dockerBuildSpec = ({ imageTag, ecrURI, account, region }: dockerPro
     version: "0.2",
     phases: {
       install: {
-        "runtime-versions": { nodejs: "18" },
+        "runtime-versions": { nodejs: "22" },
       },
       pre_build: {
         commands: [

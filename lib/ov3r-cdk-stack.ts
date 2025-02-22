@@ -41,7 +41,7 @@ export class Ov3RCdkStack extends cdk.Stack {
       stackName: "mgmt-ov3r-cdk",
       env: config.mgmt.east,
       slackWorkspaceId: "T05AXT2C65P",
-      pipelineSlackChannelId: "C060Q4JQFFY",
+      pipelineSlackChannelId: "C08EL3YB490",
     });
 
     const devStack = new MainStack(this, `dev-ov3r-cdk`, {

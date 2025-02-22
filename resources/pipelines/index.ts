@@ -229,7 +229,7 @@ export class PipelineStack extends cdk.Stack {
 
     /************************************************** CODESTAR ******************************************************* */
 
-    const SNSTopic = sns.Topic.fromTopicArn(
+   /*  const SNSTopic = sns.Topic.fromTopicArn(
       this,
       `import-${props.project}-${props.service}-sns-topic-arn`,
       cdk.Fn.importValue(`${props.project}-codepipeline-sns-topic-arn`)
@@ -271,7 +271,7 @@ export class PipelineStack extends cdk.Stack {
       detailType: codestarnotifications.DetailType.BASIC,
       notificationRuleName: `${props.environment}-${props.service}-codedeploy-01`,
     });
-    SNSTopic.grantPublish(new iam.ArnPrincipal(codeDeployRule01.notificationRuleArn));
+    SNSTopic.grantPublish(new iam.ArnPrincipal(codeDeployRule01.notificationRuleArn)); */
 
     /*  if (props.environment === "prod") {
       const codeDeployRule02 = new codestarnotifications.NotificationRule(this, `${props.environment}-${props.service}-codedeploy-notifications-rule-02`, {

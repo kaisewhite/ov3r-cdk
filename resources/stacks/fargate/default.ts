@@ -15,6 +15,7 @@ import * as destinations from "aws-cdk-lib/aws-logs-destinations";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as elasticache from "aws-cdk-lib/aws-elasticache";
 import * as s3 from "aws-cdk-lib/aws-s3";
+import { Route53CreateCNAMEStack } from "../../../resources/stacks/shared/index";
 
 const mgmt = { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION };
 
@@ -37,7 +38,7 @@ export interface FargateStackStackProps extends cdk.StackProps {
   readonly targetGroupPriority?: number;
   readonly microService?: boolean;
   readonly hostHeaders?: string[] | undefined;
-  //readonly pathPatterns: string[];
+  readonly loadBalancerDnsName: string;
   readonly containerPort?: number;
   readonly whitelist?: Array<{ address: string; description: string }>;
 }
@@ -223,7 +224,7 @@ export class FargateStack extends cdk.Stack {
         PORT: `80`,
         HOST_HEADER: props.hostHeaders?.[0] ?? "",
         NODE_ENV: props.environment,
-        S3_BUCKET_ARN: documentStorageBucket.bucketArn,
+        S3_BUCKET_NAME: documentStorageBucket.bucketName,
       },
     });
 
@@ -354,6 +355,20 @@ export class FargateStack extends cdk.Stack {
       });
 
       cdk.Tags.of(pipelineStack).add(`Environment`, `${props.environment}`);
+
+      console.log(`Logging props.loadBalancerDnsName: ${props.loadBalancerDnsName}`);
+
+     /*  new Route53CreateCNAMEStack(this, `${prefix}-route53-cname-stack`, {
+        stackName: `${prefix}-route53-cname-stack`,
+        env: mgmt,
+        environment: props.environment,
+        service: props.service,
+        project: props.project,
+        value: props.loadBalancerDnsName,
+        hostedZoneName: `${process.env.DOMAIN}`,
+        recordName: props.hostHeaders?.[0] ?? "",
+      });   */
+
     }
 
     /************************** TAGS *************************************/

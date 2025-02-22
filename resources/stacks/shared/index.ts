@@ -8,6 +8,7 @@ import * as elbv2 from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as chatbot from "aws-cdk-lib/aws-chatbot";
+import * as route53 from "aws-cdk-lib/aws-route53";
 
 import { services } from "../../../properties";
 
@@ -188,6 +189,12 @@ export class SharedServicesStack extends cdk.Stack {
       idleTimeout: cdk.Duration.seconds(30),
     });
 
+    new cdk.CfnOutput(this, `${prefix}-load-balancer-dns-name`, {
+      value: loadBalancer.loadBalancerDnsName,
+      description: "The DNS name for the load balancer",
+      exportName: `${props.environment}-${props.project}-load-balancer-dns-name`,
+    });
+
     cdk.Tags.of(loadBalancer).add("Name", prefix);
     cdk.Tags.of(loadBalancer).add("Environment", props.environment);
     cdk.Tags.of(loadBalancer).add("Project", props.project);
@@ -234,4 +241,39 @@ export class SharedServicesStack extends cdk.Stack {
       cdk.Tags.of(resource).add(`Environment`, `${props.environment}`);
     });
   }
+}
+
+
+export interface Route53StackProps extends cdk.StackProps {
+  readonly environment: string;
+  readonly project: string;
+  readonly service: string;
+  readonly hostedZoneName: string;
+  readonly recordName: string;
+  readonly value: string;
+}
+export class Route53CreateCNAMEStack extends cdk.Stack {
+  constructor(scope: Construct, id: string, props: Route53StackProps) {
+    super(scope, id, props);
+
+    const prefix = `${props.environment}-${props.project}-${props.service}`;
+
+    const hostedZone = route53.HostedZone.fromLookup(this, `${prefix}-importing-hosted-zone`, {
+      domainName: props.hostedZoneName, //e.g. example.com
+    });
+
+    new route53.CnameRecord(this, `${prefix}-route53-cname-record`, {
+      domainName: props.value,
+      zone: hostedZone,
+      // the properties below are optional
+      comment: `Create the CNAME record for ${prefix} in ${props.hostedZoneName}`,
+      recordName: props.recordName,
+      ttl: cdk.Duration.minutes(30),
+    });
+
+
+
+  }
+
+
 }

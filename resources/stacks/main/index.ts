@@ -28,7 +28,6 @@ export class MainStack extends cdk.Stack {
       whitelist: props.whitelist,
       certificate: `${props.certificate}`,
       env: { account: this.account, region: this.region },
-
       tags: { Environment: `${props.environment}` },
     });
 
@@ -47,7 +46,6 @@ export class MainStack extends cdk.Stack {
               service: service.name,
               description: "Rest API Service that communicates with RDS Postgres",
               desiredCount: service.properties[props.environment].desiredCount,
-
               secretVariables: service.secrets,
               internetFacing: false,
               healthCheck: "/healthcheck",
@@ -55,6 +53,7 @@ export class MainStack extends cdk.Stack {
               imageTag: props.imageTag,
               domain: props.domain,
               certificate: props.certificate,
+              loadBalancerDnsName: cdk.Fn.importValue(`${props.environment}-${props.project}-load-balancer-dns-name`),
               hostHeaders: service.properties[props.environment].hostHeaders.length != 0 ? service.properties[props.environment].hostHeaders : undefined,
               github: service.github,
               vpcId: props.vpcId,
