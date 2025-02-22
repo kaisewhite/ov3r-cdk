@@ -14,6 +14,7 @@ export interface MainStackProps extends cdk.StackProps {
   readonly imageTag: string;
   readonly certificate?: string;
   readonly whitelist?: Array<{ address: string; description: string }>;
+  readonly loadBalancerDns?: string;
 }
 export class MainStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: MainStackProps) {
@@ -52,8 +53,8 @@ export class MainStack extends cdk.Stack {
               targetGroupPriority: service.properties[props.environment].priority,
               imageTag: props.imageTag,
               domain: props.domain,
+              loadBalancerDns: props.loadBalancerDns,
               certificate: props.certificate,
-              loadBalancerDnsName: cdk.Fn.importValue(`${props.environment}-${props.project}-load-balancer-dns-name`),
               hostHeaders: service.properties[props.environment].hostHeaders.length != 0 ? service.properties[props.environment].hostHeaders : undefined,
               github: service.github,
               vpcId: props.vpcId,

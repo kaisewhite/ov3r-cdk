@@ -51,6 +51,7 @@ export class Ov3RCdkStack extends cdk.Stack {
       imageTag: "dev",
       whitelist: whitelist,
       vpcId: `${process.env.DEV_VPC}`,
+      loadBalancerDns: "dev-ov3r-18158879.us-east-1.elb.amazonaws.com",
       certificate: "arn:aws:acm:us-east-1:896502667345:certificate/e4634438-8a7d-46ff-b06e-1790f5a46460",
       stackName: "dev-ov3r-cdk",
       env: config.dev.east,

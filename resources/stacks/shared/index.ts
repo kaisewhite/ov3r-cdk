@@ -9,7 +9,7 @@ import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as chatbot from "aws-cdk-lib/aws-chatbot";
 import * as route53 from "aws-cdk-lib/aws-route53";
-
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { services } from "../../../properties";
 
 export interface MGMTStackProps extends cdk.StackProps {
@@ -189,11 +189,6 @@ export class SharedServicesStack extends cdk.Stack {
       idleTimeout: cdk.Duration.seconds(30),
     });
 
-    new cdk.CfnOutput(this, `${prefix}-load-balancer-dns-name`, {
-      value: loadBalancer.loadBalancerDnsName,
-      description: "The DNS name for the load balancer",
-      exportName: `${props.environment}-${props.project}-load-balancer-dns-name`,
-    });
 
     cdk.Tags.of(loadBalancer).add("Name", prefix);
     cdk.Tags.of(loadBalancer).add("Environment", props.environment);

@@ -16,6 +16,7 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as elasticache from "aws-cdk-lib/aws-elasticache";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import { Route53CreateCNAMEStack } from "../../../resources/stacks/shared/index";
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 
 const mgmt = { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION };
 
@@ -37,8 +38,8 @@ export interface FargateStackStackProps extends cdk.StackProps {
   readonly certificate?: string;
   readonly targetGroupPriority?: number;
   readonly microService?: boolean;
+  readonly loadBalancerDns?: string;
   readonly hostHeaders?: string[] | undefined;
-  readonly loadBalancerDnsName: string;
   readonly containerPort?: number;
   readonly whitelist?: Array<{ address: string; description: string }>;
 }
@@ -318,6 +319,9 @@ export class FargateStack extends cdk.Stack {
         ),
       });
 
+     
+      
+
       //Setup Listener Action
       HTTPSListener.addAction(`${prefix}-https-listener-action`, {
         priority: props.targetGroupPriority,
@@ -327,6 +331,19 @@ export class FargateStack extends cdk.Stack {
 
       cdk.Tags.of(targetGroup).add(`Environment`, `${props.environment}`);
       cdk.Tags.of(HTTPSListener).add(`Environment`, `${props.environment}`);
+    }
+
+    if (props.loadBalancerDns != undefined) {
+      new Route53CreateCNAMEStack(this, `${prefix}-route53-cname-stack`, {
+        stackName: `${prefix}-route53-cname-stack`,
+        env: mgmt,
+        environment: props.environment,
+        service: props.service,
+        project: props.project,
+        value: props.loadBalancerDns,
+        hostedZoneName: `${process.env.DOMAIN}`,
+        recordName: props.hostHeaders?.[0] ?? "",
+      })
     }
 
     /************************************ CODEPIPELINE STACK ******************************************** */
@@ -356,18 +373,12 @@ export class FargateStack extends cdk.Stack {
 
       cdk.Tags.of(pipelineStack).add(`Environment`, `${props.environment}`);
 
-      console.log(`Logging props.loadBalancerDnsName: ${props.loadBalancerDnsName}`);
 
-     /*  new Route53CreateCNAMEStack(this, `${prefix}-route53-cname-stack`, {
-        stackName: `${prefix}-route53-cname-stack`,
-        env: mgmt,
-        environment: props.environment,
-        service: props.service,
-        project: props.project,
-        value: props.loadBalancerDnsName,
-        hostedZoneName: `${process.env.DOMAIN}`,
-        recordName: props.hostHeaders?.[0] ?? "",
-      });   */
+   
+      
+
+     
+    
 
     }
 
