@@ -22,7 +22,7 @@ export const services: Service[] = [
     envs: ["dev", "prod"],
     github: "ov3r-api",
     properties: {
-      dev: { hostHeaders: ["dev.ov3r.tech"], priority: 1, memoryLimitMiB: 1024, cpu: 512, desiredCount: 1 },
+      dev: { hostHeaders: ["dev.ov3r.tech"], priority: 1, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
       prod: { hostHeaders: ["api.ov3r.tech"], priority: 1, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
     },
     secrets: [
