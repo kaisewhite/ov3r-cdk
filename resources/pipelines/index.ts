@@ -229,13 +229,13 @@ export class PipelineStack extends cdk.Stack {
 
     /************************************************** CODESTAR ******************************************************* */
 
-   /*  const SNSTopic = sns.Topic.fromTopicArn(
+    const SNSTopic = sns.Topic.fromTopicArn(
       this,
       `import-${props.project}-${props.service}-sns-topic-arn`,
       cdk.Fn.importValue(`${props.project}-codepipeline-sns-topic-arn`)
     );
     //https://docs.aws.amazon.com/dtconsole/latest/userguide/concepts.html#events-ref-pipeline
-    const codePipelineRule = new codestarnotifications.NotificationRule(this, `${props.environment}-${props.service}-codepipeline-notifications-rule`, {
+    const codePipelineRule = new codestarnotifications.NotificationRule(this, `${prefix}-codepipeline-notifications-rule`, {
       source: pipeline, //build,
       events: [
         "codepipeline-pipeline-manual-approval-needed",
@@ -247,44 +247,44 @@ export class PipelineStack extends cdk.Stack {
       targets: [SNSTopic],
       enabled: true,
       detailType: codestarnotifications.DetailType.FULL,
-      notificationRuleName: `${props.environment}-${props.service}-codepipeline`,
+      notificationRuleName: `${prefix}-codepipeline`,
     });
 
     SNSTopic.grantPublish(new iam.ArnPrincipal(codePipelineRule.notificationRuleArn));
 
-    const codebuildRule = new codestarnotifications.NotificationRule(this, `${props.environment}-${props.service}-codebuild-notifications-rule`, {
+    const codebuildRule = new codestarnotifications.NotificationRule(this, `${prefix}-codebuild-notifications-rule`, {
       source: build,
       events: ["codebuild-project-build-state-failed"],
       targets: [SNSTopic],
       enabled: true,
       detailType: codestarnotifications.DetailType.BASIC,
-      notificationRuleName: `${props.environment}-${props.service}-codebuild`,
+      notificationRuleName: `${prefix}-codebuild`,
     });
 
     SNSTopic.grantPublish(new iam.ArnPrincipal(codebuildRule.notificationRuleArn));
 
-    const codeDeployRule01 = new codestarnotifications.NotificationRule(this, `${props.environment}-${props.service}-codedeploy-notifications-rule-01`, {
+    const codeDeployRule01 = new codestarnotifications.NotificationRule(this, `${prefix}-codedeploy-notifications-rule`, {
       source: deploy01,
       events: ["codebuild-project-build-state-failed"],
       targets: [SNSTopic],
       enabled: true,
       detailType: codestarnotifications.DetailType.BASIC,
-      notificationRuleName: `${props.environment}-${props.service}-codedeploy-01`,
+      notificationRuleName: `${prefix}-codedeploy`,
     });
-    SNSTopic.grantPublish(new iam.ArnPrincipal(codeDeployRule01.notificationRuleArn)); */
+    SNSTopic.grantPublish(new iam.ArnPrincipal(codeDeployRule01.notificationRuleArn));
 
-    /*  if (props.environment === "prod") {
-      const codeDeployRule02 = new codestarnotifications.NotificationRule(this, `${props.environment}-${props.service}-codedeploy-notifications-rule-02`, {
+   /* if (props.environment === "prod") {
+      const codeDeployRule02 = new codestarnotifications.NotificationRule(this, `${prefix}-codedeploy-notifications-rule-02`, {
         source: deploy02,
         events: [ "codebuild-project-build-state-failed"],
         targets: [SNSTopic],
         enabled: true,
         detailType: codestarnotifications.DetailType.BASIC,
-        notificationRuleName: `${props.environment}-${props.service}-us-west-1-codedeploy-02`,
+        notificationRuleName: `${prefix}-us-west-1-codedeploy-02`,
       });
       cdk.Tags.of(codeDeployRule02).add(`Environment`, `${props.environment}`);
       SNSTopic.grantPublish(new iam.ArnPrincipal(codeDeployRule01.notificationRuleArn));
-    } */
+    }  */
 
     /************************** TAGS *************************************/
 
