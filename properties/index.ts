@@ -48,7 +48,7 @@ export const services: Service[] = [
       dev: { hostHeaders: ["console.dev.ov3r.tech"], priority: 4, memoryLimitMiB: 1024, cpu: 512, desiredCount: 1 },
       prod: { hostHeaders: ["console.ov3r.tech"], priority: 4, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
     },
-    healthCheck: "/",
+    healthCheck: "/healthcheck",
     secrets: [
       "PGHOST",
       "PGPORT",
