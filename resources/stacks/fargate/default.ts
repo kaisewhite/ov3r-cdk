@@ -16,7 +16,7 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as elasticache from "aws-cdk-lib/aws-elasticache";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import { Route53CreateCNAMEStack } from "../../../resources/stacks/shared/index";
-import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as ssm from "aws-cdk-lib/aws-ssm";
 
 const mgmt = { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION };
 
@@ -224,7 +224,7 @@ export class FargateStack extends cdk.Stack {
         REGION: this.region,
         PORT: `80`,
         HOST_HEADER: props.hostHeaders?.[0] ?? "",
-        NODE_ENV: props.environment,
+        NODE_ENV: props.environment === "prod" ? "production" : "development",
         S3_BUCKET_NAME: documentStorageBucket.bucketName,
       },
     });
@@ -319,9 +319,6 @@ export class FargateStack extends cdk.Stack {
         ),
       });
 
-     
-      
-
       //Setup Listener Action
       HTTPSListener.addAction(`${prefix}-https-listener-action`, {
         priority: props.targetGroupPriority,
@@ -343,7 +340,7 @@ export class FargateStack extends cdk.Stack {
         value: props.loadBalancerDns,
         hostedZoneName: `${process.env.DOMAIN}`,
         recordName: props.hostHeaders?.[0] ?? "",
-      })
+      });
     }
 
     /************************************ CODEPIPELINE STACK ******************************************** */
@@ -372,14 +369,6 @@ export class FargateStack extends cdk.Stack {
       });
 
       cdk.Tags.of(pipelineStack).add(`Environment`, `${props.environment}`);
-
-
-   
-      
-
-     
-    
-
     }
 
     /************************** TAGS *************************************/

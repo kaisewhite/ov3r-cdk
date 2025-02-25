@@ -49,7 +49,7 @@ export class MainStack extends cdk.Stack {
               desiredCount: service.properties[props.environment].desiredCount,
               secretVariables: service.secrets,
               internetFacing: false,
-              healthCheck: "/healthcheck",
+              healthCheck: service.healthCheck,
               targetGroupPriority: service.properties[props.environment].priority,
               imageTag: props.imageTag,
               domain: props.domain,
