@@ -273,7 +273,7 @@ export class PipelineStack extends cdk.Stack {
     });
     SNSTopic.grantPublish(new iam.ArnPrincipal(codeDeployRule01.notificationRuleArn));
 
-   /* if (props.environment === "prod") {
+    /* if (props.environment === "prod") {
       const codeDeployRule02 = new codestarnotifications.NotificationRule(this, `${prefix}-codedeploy-notifications-rule-02`, {
         source: deploy02,
         events: [ "codebuild-project-build-state-failed"],

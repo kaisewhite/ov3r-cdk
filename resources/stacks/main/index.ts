@@ -5,6 +5,7 @@ import * as elbv2 from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import { SharedServicesStack } from "../shared";
 import { FargateStack as DefaultFargateService } from "../fargate/default";
 import { services } from "../../../properties/index";
+import { WebServiceFargateStack } from "../fargate/web-svc";
 
 export interface MainStackProps extends cdk.StackProps {
   readonly environment: string;
@@ -38,6 +39,34 @@ export class MainStack extends cdk.Stack {
       /**************************** COMPUTE RESOURCES ********************************/
       if (service.envs.includes(props.environment)) {
         switch (service.name) {
+          case "web-svc":
+            const webService = new WebServiceFargateStack(this, `${props.environment}-${props.project}-${service.name}-cdk`, {
+              stackName: `${props.environment}-${props.project}-${service.name}-cdk`,
+              environment: props.environment,
+              project: props.project,
+              microService: true,
+              service: service.name,
+              description: "Rest API Service that communicates with RDS Postgres",
+              desiredCount: service.properties[props.environment].desiredCount,
+              secretVariables: service.secrets,
+              internetFacing: false,
+              healthCheck: service.healthCheck,
+              targetGroupPriority: service.properties[props.environment].priority,
+              imageTag: props.imageTag,
+              domain: props.domain,
+              loadBalancerDns: props.loadBalancerDns,
+              certificate: props.certificate,
+              hostHeaders: service.properties[props.environment].hostHeaders.length != 0 ? service.properties[props.environment].hostHeaders : undefined,
+              github: service.github,
+              vpcId: props.vpcId,
+              whitelist: props.whitelist,
+              memoryLimitMiB: service.properties[props.environment].memoryLimitMiB,
+              cpu: service.properties[props.environment].cpu,
+              env: { account: this.account, region: this.region },
+              tags: { Environment: `${props.environment}` },
+            });
+            webService.addDependency(shared);
+            break;
           default:
             const defaultService = new DefaultFargateService(this, `${props.environment}-${props.project}-${service.name}-cdk`, {
               stackName: `${props.environment}-${props.project}-${service.name}-cdk`,

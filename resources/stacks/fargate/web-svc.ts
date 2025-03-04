@@ -15,7 +15,7 @@ import * as destinations from "aws-cdk-lib/aws-logs-destinations";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as elasticache from "aws-cdk-lib/aws-elasticache";
 import * as s3 from "aws-cdk-lib/aws-s3";
-import { Route53CreateCNAMEStack } from "../../../resources/stacks/shared/index";
+import { Route53CreateCNAMEStack } from "../shared/index";
 import * as ssm from "aws-cdk-lib/aws-ssm";
 
 const mgmt = { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION };
@@ -43,7 +43,7 @@ export interface FargateStackStackProps extends cdk.StackProps {
   readonly containerPort?: number;
   readonly whitelist?: Array<{ address: string; description: string }>;
 }
-export class FargateStack extends cdk.Stack {
+export class WebServiceFargateStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: FargateStackStackProps) {
     super(scope, id, props);
 
@@ -88,17 +88,6 @@ export class FargateStack extends cdk.Stack {
 
     /**************************************************************************************** */
 
-    const documentStorageBucket = new s3.Bucket(this, `${prefix}-document-storage`, {
-      bucketName: `${prefix}-document-storage`,
-      versioned: false,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      autoDeleteObjects: true,
-      objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
-      accessControl: s3.BucketAccessControl.BUCKET_OWNER_FULL_CONTROL,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ACLS,
-      publicReadAccess: true,
-    });
-
     const ecsTaskRole = new iam.Role(this, `${prefix}-ecs-task-role`, {
       assumedBy: new iam.CompositePrincipal(
         new iam.AccountPrincipal(`${process.env.CDK_DEFAULT_ACCOUNT}`),
@@ -109,7 +98,6 @@ export class FargateStack extends cdk.Stack {
 
     secrets.grantRead(ecsTaskRole);
     ecrRepository.grantPullPush(new iam.ArnPrincipal(ecsTaskRole.roleArn));
-    documentStorageBucket.grantReadWrite(ecsTaskRole);
 
     /**
      * This permission is needed so the ecs task can pull the image from the mgmt account
@@ -226,7 +214,7 @@ export class FargateStack extends cdk.Stack {
         HOST_HEADER: props.hostHeaders?.[0] ?? "",
         //NODE_ENV: props.environment === "prod" ? "production" : "development",
         //NEXT_PUBLIC_APP_ENV: props.environment === "prod" ? "production" : "development",
-        S3_BUCKET_NAME: documentStorageBucket.bucketName,
+        S3_BUCKET_NAME: `${props.environment}-${props.project}-api-svc-document-storage`,
       },
     });
 
