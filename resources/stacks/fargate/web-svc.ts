@@ -16,6 +16,8 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as elasticache from "aws-cdk-lib/aws-elasticache";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import { Route53CreateCNAMEStack } from "../shared/index";
+import * as events from "aws-cdk-lib/aws-events";
+import * as targets from "aws-cdk-lib/aws-events-targets";
 import * as ssm from "aws-cdk-lib/aws-ssm";
 
 const mgmt = { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION };
@@ -274,6 +276,67 @@ export class WebServiceFargateStack extends cdk.Stack {
 
     cdk.Tags.of(scalingPolicy).add(`Environment`, `${props.environment}`);
     //}
+
+    /**
+     * EventBridge Rules for VPN Service
+     * Start VPN at 05:00 EST (10:00 UTC)
+     * Stop VPN at 23:00 EST (04:00 UTC next day)
+     */
+    // Start VPN service at 05:00 EST (10:00 UTC)
+    const startRule = new events.Rule(this, `${prefix}-start-vpn-rule`, {
+      schedule: events.Schedule.cron({
+        minute: "0",
+        hour: "10", // 10:00 UTC = 05:00 EST
+        month: "*",
+        weekDay: "*",
+      }),
+      ruleName: `${prefix}-start-vpn-rule`,
+      description: `Start VPN service at 05:00 EST (10:00 UTC)`,
+      targets: [
+        new targets.AwsApi({
+          service: "ECS",
+          action: "updateService",
+          parameters: {
+            Cluster: fargateCluster,
+            Service: fargateService.serviceName,
+            DesiredCount: 1,
+          },
+          catchErrorPattern: "ServiceNotFoundException",
+          policyStatement: new iam.PolicyStatement({
+            actions: ["ecs:UpdateService"],
+            resources: ["*"],
+          }),
+        }),
+      ],
+    });
+
+    // Stop VPN service at 23:00 EST (04:00 UTC next day)
+    const stopRule = new events.Rule(this, `${prefix}-stop-vpn-rule`, {
+      schedule: events.Schedule.cron({
+        minute: "0",
+        hour: "4", // 04:00 UTC = 23:00 EST (previous day)
+        month: "*",
+        weekDay: "*",
+      }),
+      ruleName: `${prefix}-stop-vpn-rule`,
+      description: `Stop VPN service at 23:00 EST (04:00 UTC next day)`,
+      targets: [
+        new targets.AwsApi({
+          service: "ECS",
+          action: "updateService",
+          parameters: {
+            Cluster: fargateCluster,
+            Service: fargateService.serviceName,
+            DesiredCount: 0,
+          },
+          catchErrorPattern: "ServiceNotFoundException",
+          policyStatement: new iam.PolicyStatement({
+            actions: ["ecs:UpdateService"],
+            resources: ["*"],
+          }),
+        }),
+      ],
+    });
 
     /***************************** TARGET GROUP *****************************/
 

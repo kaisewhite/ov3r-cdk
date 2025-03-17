@@ -17,7 +17,7 @@ interface Service {
 }
 
 export const services: Service[] = [
-  {
+  /*  {
     name: "api-svc",
     type: "fargate",
     envs: ["dev", "prod"],
@@ -38,7 +38,7 @@ export const services: Service[] = [
       "REDIS_CACHE_HOST_ENDPOINT",
       "DEFAULT_CACHE_TTL",
     ],
-  },
+  }, */
   {
     name: "advisor-api-svc",
     type: "fargate",
@@ -110,7 +110,7 @@ export const services: Service[] = [
     name: "view-sync-svc",
     type: "fargate",
     envs: ["dev", "prod"],
-    github: "ViewSync",
+    github: "enframe",
     properties: {
       dev: { hostHeaders: ["viewsync.dev.ov3r.tech"], priority: 5, memoryLimitMiB: 1024, cpu: 512, desiredCount: 1 },
       prod: { hostHeaders: ["console.ov3r.tech"], priority: 5, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
@@ -127,6 +127,7 @@ export const services: Service[] = [
       "REDIS_CACHE_HOST_ENDPOINT",
       "NEXT_PUBLIC_APP_ENV",
       "DEFAULT_CACHE_TTL",
+      "NEXT_PUBLIC_OPEN_WEATHER_API_KEY",
     ],
   },
 ];
