@@ -17,36 +17,14 @@ interface Service {
 }
 
 export const services: Service[] = [
-  /*  {
-    name: "api-svc",
-    type: "fargate",
-    envs: ["dev", "prod"],
-    github: "ov3r-api",
-    properties: {
-      dev: { hostHeaders: ["api.dev.ov3r.tech"], priority: 4, memoryLimitMiB: 1024, cpu: 512, desiredCount: 1 },
-      prod: { hostHeaders: ["api.ov3r.tech"], priority: 4, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
-    },
-    healthCheck: "/healthcheck",
-    secrets: [
-      "PGHOST",
-      "PGPORT",
-      "PGUSER",
-      "PGPASSWORD",
-      "PGDATABASE",
-      "OPENAI_API_KEY",
-      "OPEN_AI_MODEL_NAME",
-      "REDIS_CACHE_HOST_ENDPOINT",
-      "DEFAULT_CACHE_TTL",
-    ],
-  }, */
   {
-    name: "advisor-api-svc",
+    name: "comprehend-query",
     type: "fargate",
-    envs: ["dev", "prod"],
-    github: "ov3r-api",
+    envs: ["dev"],
+    github: "comprehend-query",
     properties: {
-      dev: { hostHeaders: ["advisor.dev.ov3r.tech"], priority: 3, memoryLimitMiB: 1024, cpu: 512, desiredCount: 1 },
-      prod: { hostHeaders: ["advisor.ov3r.tech"], priority: 3, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
+      dev: { hostHeaders: ["query.dev.ov3r.tech"], priority: 3, memoryLimitMiB: 1024, cpu: 512, desiredCount: 1 },
+      prod: { hostHeaders: ["query.ov3r.tech"], priority: 3, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
     },
     healthCheck: "/healthcheck",
     secrets: [
@@ -61,59 +39,35 @@ export const services: Service[] = [
       "DEFAULT_CACHE_TTL",
     ],
   },
+
   {
-    name: "comprehend-api-svc",
+    name: "comprehend-web-svc",
     type: "fargate",
     envs: ["dev", "prod"],
-    github: "ov3r-api",
-    properties: {
-      dev: { hostHeaders: ["comprehend.dev.ov3r.tech"], priority: 2, memoryLimitMiB: 1024, cpu: 512, desiredCount: 1 },
-      prod: { hostHeaders: ["comprehend.ov3r.tech"], priority: 2, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
-    },
-    healthCheck: "/healthcheck",
-    secrets: [
-      "PGHOST",
-      "PGPORT",
-      "PGUSER",
-      "PGPASSWORD",
-      "PGDATABASE",
-      "OPENAI_API_KEY",
-      "OPEN_AI_MODEL_NAME",
-      "REDIS_CACHE_HOST_ENDPOINT",
-      "DEFAULT_CACHE_TTL",
-    ],
-  },
-  {
-    name: "web-svc",
-    type: "fargate",
-    envs: ["dev", "prod"],
-    github: "ov3r-web",
+    github: "comprehend-web",
     properties: {
       dev: { hostHeaders: ["console.dev.ov3r.tech"], priority: 1, memoryLimitMiB: 1024, cpu: 512, desiredCount: 1 },
       prod: { hostHeaders: ["console.ov3r.tech"], priority: 1, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
     },
     healthCheck: "/healthcheck",
     secrets: [
-      "PGHOST",
-      "PGPORT",
-      "PGUSER",
-      "PGPASSWORD",
-      "PGDATABASE",
+      "NEXT_PUBLIC_USER_ID",
+      "NEXT_PUBLIC_CHAT_ID",
+      "NEXT_PUBLIC_OPENAI_API_KEY",
+      "NEXT_PUBLIC_OPEN_AI_MODEL_NAME",
+      "NEXT_PUBLIC_REDIS_CACHE_HOST_ENDPOINT",
+      "NEXT_PUBLIC_DATABASE_URL",
       "OPENAI_API_KEY",
-      "OPEN_AI_MODEL_NAME",
-      "REDIS_CACHE_HOST_ENDPOINT",
-      "NEXT_PUBLIC_APP_ENV",
-      "DEFAULT_CACHE_TTL",
     ],
   },
   {
-    name: "view-sync-svc",
+    name: "enframe-svc",
     type: "fargate",
     envs: ["dev", "prod"],
     github: "enframe",
     properties: {
-      dev: { hostHeaders: ["viewsync.dev.ov3r.tech"], priority: 5, memoryLimitMiB: 1024, cpu: 512, desiredCount: 1 },
-      prod: { hostHeaders: ["console.ov3r.tech"], priority: 5, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
+      dev: { hostHeaders: ["enframe.dev.ov3r.tech"], priority: 7, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
+      prod: { hostHeaders: ["enframe.ov3r.tech"], priority: 7, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
     },
     healthCheck: "/healthcheck",
     secrets: [

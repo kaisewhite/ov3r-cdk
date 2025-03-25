@@ -9,8 +9,11 @@ import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as chatbot from "aws-cdk-lib/aws-chatbot";
 import * as route53 from "aws-cdk-lib/aws-route53";
-import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as ssm from "aws-cdk-lib/aws-ssm";
 import { services } from "../../../properties";
+import { addStandardTags } from "../../../helpers/tag_resources";
+import * as sm from "aws-cdk-lib/aws-secretsmanager";
+import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 
 export interface MGMTStackProps extends cdk.StackProps {
   readonly project: string;
@@ -21,6 +24,33 @@ export class MGMTStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: MGMTStackProps) {
     super(scope, id, props);
 
+    // Create tagging props for the management stack
+    const taggingProps = {
+      project: props.project,
+      service: "mgmt",
+      environment: "shared", // MGMTStack is typically a shared resource
+      customTags: {
+        Stack: "mgmt",
+        ResourceType: "management",
+      },
+    };
+
+    // Add tags to the stack itself
+    addStandardTags(this, taggingProps);
+
+    const secrets = new secretsmanager.Secret(this, `${props.project}-secret`, {
+      secretName: `${props.project}-pipeline-environment-variables`,
+      secretObjectValue: {
+        NEXT_PUBLIC_DATABASE_URL: cdk.SecretValue.unsafePlainText(""),
+        PUBLICA_API_TOKEN: cdk.SecretValue.unsafePlainText(""),
+        API_KEY: cdk.SecretValue.unsafePlainText(""),
+        NEXT_PUBLIC_OPENAI_API_KEY: cdk.SecretValue.unsafePlainText(""),
+      },
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      description: `Environment Variables for ${props.project} pipelines and services`,
+    });
+    addStandardTags(secrets, taggingProps);
+
     /************************************* ECR Resources ****************************/
 
     services.forEach((service) => {
@@ -29,6 +59,16 @@ export class MGMTStack extends cdk.Stack {
           const repository = new ecr.Repository(this, `${props.project}-${service.name}-repository`, {
             repositoryName: `${props.project}-${service.name}`,
             imageScanOnPush: true,
+          });
+
+          // Apply tags to repository
+          addStandardTags(repository, {
+            ...taggingProps,
+            service: service.name, // Override service to reflect the actual service
+            customTags: {
+              ...taggingProps.customTags,
+              ResourceType: "ecr-repository",
+            },
           });
 
           repository.addLifecycleRule({ tagPrefixList: ["dev", "stage", "master"], maxImageCount: 1 });
@@ -62,8 +102,6 @@ export class MGMTStack extends cdk.Stack {
               ],
             })
           );
-
-          cdk.Tags.of(repository).add(`Environment`, `shared`);
           break;
 
         default:
@@ -77,12 +115,28 @@ export class MGMTStack extends cdk.Stack {
       assumedBy: new iam.ServicePrincipal("chatbot.amazonaws.com"),
       roleName: `${props.project}-chatbot-slack-role`,
     });
+    addStandardTags(chatbotSlackRole, {
+      ...taggingProps,
+      customTags: {
+        ...taggingProps.customTags,
+        ResourceType: "iam-role",
+        Purpose: "chatbot",
+      },
+    });
 
     /*************************** SNS TOPIC ************************/
 
     const codePipelineSnsTopic = new sns.Topic(this, `${props.project}-codepipeline-sns-topic`, {
       displayName: `${props.project}-codepipeline`,
       topicName: `${props.project}-codepipeline`,
+    });
+    addStandardTags(codePipelineSnsTopic, {
+      ...taggingProps,
+      customTags: {
+        ...taggingProps.customTags,
+        ResourceType: "sns-topic",
+        Purpose: "codepipeline-notifications",
+      },
     });
 
     codePipelineSnsTopic.grantPublish(new iam.AccountRootPrincipal());
@@ -102,16 +156,17 @@ export class MGMTStack extends cdk.Stack {
       slackChannelId: props.pipelineSlackChannelId,
       role: chatbotSlackRole,
     });
+    addStandardTags(channelConfiguration, {
+      ...taggingProps,
+      customTags: {
+        ...taggingProps.customTags,
+        ResourceType: "chatbot",
+        Purpose: "slack-notifications",
+      },
+    });
 
     channelConfiguration.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
     channelConfiguration.addNotificationTopic(codePipelineSnsTopic);
-
-    /************************** TAGS *************************************/
-
-    const taggedResources = [channelConfiguration, chatbotSlackRole, codePipelineSnsTopic];
-    taggedResources.forEach((resource) => {
-      cdk.Tags.of(resource).add(`Environment`, `shared`);
-    });
   }
 }
 
@@ -131,6 +186,14 @@ export class SharedServicesStack extends cdk.Stack {
 
     const prefix = `${props.environment}-${props.project}`;
 
+    // Create tagging props object
+    const taggingProps = {
+      project: props.project,
+      service: "shared", // Since this is a shared services stack
+      environment: props.environment,
+      prefix: prefix,
+    };
+
     /**
      * CDK IMPORTS
      */
@@ -145,6 +208,7 @@ export class SharedServicesStack extends cdk.Stack {
       containerInsights: true,
       clusterName: `${props.project}`,
     });
+    addStandardTags(cluster, taggingProps);
 
     /************************************************** SHARED APPLICATION LOAD BALANCER ******************************************************* */
 
@@ -153,12 +217,9 @@ export class SharedServicesStack extends cdk.Stack {
       securityGroupName: `${prefix}-load-balancer`,
       allowAllOutbound: true,
     });
+    addStandardTags(loadBalancerSecurityGroup, taggingProps);
 
     loadBalancerSecurityGroup.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
-
-    cdk.Tags.of(loadBalancerSecurityGroup).add("Name", `${prefix}-load-balancer`);
-    cdk.Tags.of(loadBalancerSecurityGroup).add("Environment", props.environment);
-    cdk.Tags.of(loadBalancerSecurityGroup).add("Project", props.project);
 
     new cdk.CfnOutput(this, `${props.environment}-load-balancer-sg-id`, {
       value: loadBalancerSecurityGroup.securityGroupId,
@@ -188,11 +249,7 @@ export class SharedServicesStack extends cdk.Stack {
       securityGroup: loadBalancerSecurityGroup,
       idleTimeout: cdk.Duration.seconds(30),
     });
-
-
-    cdk.Tags.of(loadBalancer).add("Name", prefix);
-    cdk.Tags.of(loadBalancer).add("Environment", props.environment);
-    cdk.Tags.of(loadBalancer).add("Project", props.project);
+    addStandardTags(loadBalancer, taggingProps);
 
     loadBalancer.addRedirect({
       sourceProtocol: elbv2.ApplicationProtocol.HTTP,
@@ -207,8 +264,7 @@ export class SharedServicesStack extends cdk.Stack {
       certificates: [importedCertificate],
       open: true,
     });
-
-    cdk.Tags.of(HTTPSListener).add("environment", props.environment);
+    addStandardTags(HTTPSListener, taggingProps);
 
     new cdk.CfnOutput(this, `${prefix}-https-listener-arn`, {
       value: HTTPSListener.listenerArn,
@@ -228,16 +284,8 @@ export class SharedServicesStack extends cdk.Stack {
       conditions: [elbv2.ListenerCondition.pathPatterns(["/healthcheck"])],
       action: elbv2.ListenerAction.fixedResponse(200, { messageBody: JSON.stringify({ response: 200, message: "healthy" }) }),
     });
-
-    /************************** TAGS *************************************/
-
-    const taggedResources = [loadBalancerSecurityGroup, loadBalancer, HTTPSListener];
-    taggedResources.forEach((resource) => {
-      cdk.Tags.of(resource).add(`Environment`, `${props.environment}`);
-    });
   }
 }
-
 
 export interface Route53StackProps extends cdk.StackProps {
   readonly environment: string;
@@ -265,10 +313,5 @@ export class Route53CreateCNAMEStack extends cdk.Stack {
       recordName: props.recordName,
       ttl: cdk.Duration.minutes(30),
     });
-
-
-
   }
-
-
 }

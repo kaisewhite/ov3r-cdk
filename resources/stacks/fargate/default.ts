@@ -1,6 +1,6 @@
 //import * as cdk from "aws-cdk-lib/core";
 import * as cdk from "aws-cdk-lib";
-import { Construct } from "constructs";
+import { Construct, IConstruct } from "constructs";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as ecr from "aws-cdk-lib/aws-ecr";
@@ -19,6 +19,7 @@ import { Route53CreateCNAMEStack } from "../../../resources/stacks/shared/index"
 import * as ssm from "aws-cdk-lib/aws-ssm";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
+import { addStandardTags } from "../../../helpers/tag_resources";
 
 const mgmt = { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION };
 
@@ -53,15 +54,30 @@ export class FargateStack extends cdk.Stack {
 
     const prefix = `${props.environment}-${props.project}-${props.service}`;
 
+    // Create tagging props object that includes any custom tags from the parent stack
+    const taggingProps = {
+      project: props.project,
+      service: props.service,
+      environment: props.environment,
+      prefix: prefix,
+      customTags: {
+        ...(props.tags || {}), // Include any tags passed from parent stack
+        Stack: "fargate", // Add stack identifier
+      },
+    };
+
+    // Add tags to the stack itself
+    addStandardTags(this, taggingProps);
+
     const secrets = new secretsmanager.Secret(this, `${prefix}-secret`, {
       secretName: prefix,
-
       secretObjectValue: {
         PUBLICA_API_TOKEN: cdk.SecretValue.unsafePlainText(""),
       },
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       description: `Environment Variables for ${props.service} lambda fn`,
     });
+    addStandardTags(secrets, taggingProps);
 
     // Generate container secrets based on the specified list of secret names.
     const generateSecrets = (list: string[] | undefined) => {
@@ -76,7 +92,7 @@ export class FargateStack extends cdk.Stack {
 
     const vpc = ec2.Vpc.fromLookup(this, `importing-${prefix}-vpc`, { isDefault: false, vpcId: props.vpcId });
 
-    var fargateCluster = ecs.Cluster.fromClusterAttributes(this, `import-${prefix}-fargate-cluster`, {
+    var ecsCluster = ecs.Cluster.fromClusterAttributes(this, `import-${prefix}-fargate-cluster`, {
       clusterName: `${props.project}`,
       vpc: vpc,
       securityGroups: [],
@@ -100,6 +116,7 @@ export class FargateStack extends cdk.Stack {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ACLS,
       publicReadAccess: true,
     });
+    addStandardTags(documentStorageBucket, taggingProps);
 
     const ecsTaskRole = new iam.Role(this, `${prefix}-ecs-task-role`, {
       assumedBy: new iam.CompositePrincipal(
@@ -108,6 +125,7 @@ export class FargateStack extends cdk.Stack {
       ),
       roleName: `${prefix}-ecs-task-role`,
     });
+    addStandardTags(ecsTaskRole, taggingProps);
 
     secrets.grantRead(ecsTaskRole);
     ecrRepository.grantPullPush(new iam.ArnPrincipal(ecsTaskRole.roleArn));
@@ -165,6 +183,7 @@ export class FargateStack extends cdk.Stack {
       retention: logs.RetentionDays.ONE_WEEK,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
+    addStandardTags(logGroup, taggingProps);
 
     /************************************ FARGATE *********************************/
 
@@ -176,11 +195,7 @@ export class FargateStack extends cdk.Stack {
       securityGroupName: `${prefix}-fargate`,
       allowAllOutbound: true,
     });
-
-    cdk.Tags.of(fargateSecurityGroup).add("Name", `${prefix}-fargate`);
-    cdk.Tags.of(fargateSecurityGroup).add("Environment", props.environment);
-    cdk.Tags.of(fargateSecurityGroup).add("Service", props.service);
-    cdk.Tags.of(fargateSecurityGroup).add("Project", props.project);
+    addStandardTags(fargateSecurityGroup, taggingProps);
 
     fargateSecurityGroup.addIngressRule(ec2.Peer.ipv4(vpc.vpcCidrBlock), ec2.Port.tcp(80), `Allow TCP Traffic for ${vpc.vpcId}`);
     fargateSecurityGroup.addIngressRule(ec2.Peer.ipv4(vpc.vpcCidrBlock), ec2.Port.allIcmp(), "Allow all ICMP traffic");
@@ -248,10 +263,10 @@ export class FargateStack extends cdk.Stack {
     ];
 
     //Define service
-    const fargateService = new ecs.FargateService(this, `${prefix}-fargate-service`, {
+    const service = new ecs.FargateService(this, `${prefix}-fargate-service`, {
       serviceName: props.service,
       desiredCount: props.desiredCount,
-      cluster: fargateCluster,
+      cluster: ecsCluster,
       deploymentController: { type: ecs.DeploymentControllerType.ECS },
       platformVersion: ecs.FargatePlatformVersion.LATEST,
       taskDefinition: taskDef,
@@ -263,14 +278,16 @@ export class FargateStack extends cdk.Stack {
       maxHealthyPercent: 200,
       capacityProviderStrategies: capacityProviderStrategies,
     });
+    addStandardTags(service, taggingProps);
 
-    fargateService.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
+    service.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
 
     //if (props.environment === "prod") {
-    const scalingPolicy = fargateService.autoScaleTaskCount({
+    const scalingPolicy = service.autoScaleTaskCount({
       minCapacity: props.desiredCount != 0 ? props.desiredCount : 1,
       maxCapacity: props.desiredCount != 0 ? props.desiredCount * 5 : 2,
     });
+    addStandardTags(scalingPolicy, taggingProps);
 
     scalingPolicy.scaleOnCpuUtilization(`${prefix}-cpu-autoscaling`, {
       targetUtilizationPercent: 80,
@@ -286,69 +303,71 @@ export class FargateStack extends cdk.Stack {
       policyName: `${prefix}-memory-autoscaling`,
     });
 
-    cdk.Tags.of(scalingPolicy).add(`Environment`, `${props.environment}`);
     //}
 
     /**
-     * EventBridge Rules for VPN Service
-     * Start VPN at 05:00 EST (10:00 UTC)
-     * Stop VPN at 23:00 EST (04:00 UTC next day)
+     * EventBridge Rules for ecs-service Service
+     * Start Fargate Service at 05:00 EST (10:00 UTC)
+     * Stop ecs-service at 23:00 EST (04:00 UTC next day)
      */
-    // Start VPN service at 05:00 EST (10:00 UTC)
-    const startRule = new events.Rule(this, `${prefix}-start-vpn-rule`, {
+    // Start Fargate Service service at 05:00 EST (10:00 UTC)
+    const startRule = new events.Rule(this, `${prefix}-start-ecs-service-rule`, {
       schedule: events.Schedule.cron({
         minute: "0",
         hour: "10", // 10:00 UTC = 05:00 EST
         month: "*",
-        weekDay: "*",
+        day: "*",
       }),
-      ruleName: `${prefix}-start-vpn-rule`,
-      description: `Start VPN service at 05:00 EST (10:00 UTC)`,
+      enabled: false,
+      ruleName: `${props.service}-start-ecs-service`,
+      description: `Start Fargate Service service at 05:00 EST (10:00 UTC)`,
       targets: [
         new targets.AwsApi({
           service: "ECS",
           action: "updateService",
           parameters: {
-            Cluster: fargateCluster,
-            Service: fargateService.serviceName,
-            DesiredCount: 1,
+            cluster: ecsCluster.clusterName,
+            service: `${service.serviceName}`,
+            desiredCount: 1,
           },
           catchErrorPattern: "ServiceNotFoundException",
           policyStatement: new iam.PolicyStatement({
             actions: ["ecs:UpdateService"],
-            resources: ["*"],
+            resources: [service.serviceArn],
           }),
         }),
       ],
     });
+    addStandardTags(startRule, taggingProps);
 
-    // Stop VPN service at 23:00 EST (04:00 UTC next day)
-    const stopRule = new events.Rule(this, `${prefix}-stop-vpn-rule`, {
+    // Stop ecs-service service at 23:00 EST (04:00 UTC next day)
+    const stopRule = new events.Rule(this, `${prefix}-stop-ecs-service-rule`, {
       schedule: events.Schedule.cron({
         minute: "0",
-        hour: "4", // 04:00 UTC = 23:00 EST (previous day)
+        hour: "2", // 04:00 UTC = 23:00 EST (previous day)
         month: "*",
-        weekDay: "*",
+        day: "*",
       }),
-      ruleName: `${prefix}-stop-vpn-rule`,
-      description: `Stop VPN service at 23:00 EST (04:00 UTC next day)`,
+      ruleName: `${props.service}-stop-ecs-service`,
+      description: `Stop ecs-service service at 23:00 EST (04:00 UTC next day)`,
       targets: [
         new targets.AwsApi({
           service: "ECS",
           action: "updateService",
           parameters: {
-            Cluster: fargateCluster,
-            Service: fargateService.serviceName,
-            DesiredCount: 0,
+            cluster: ecsCluster.clusterName,
+            service: `${service.serviceName}`,
+            desiredCount: 0,
           },
           catchErrorPattern: "ServiceNotFoundException",
           policyStatement: new iam.PolicyStatement({
             actions: ["ecs:UpdateService"],
-            resources: ["*"],
+            resources: [service.serviceArn],
           }),
         }),
       ],
     });
+    addStandardTags(stopRule, taggingProps);
 
     /***************************** TARGET GROUP *****************************/
 
@@ -366,7 +385,7 @@ export class FargateStack extends cdk.Stack {
           healthyThresholdCount: 2,
         },
         targetGroupName: `${prefix}`,
-        targets: [fargateService],
+        targets: [service],
         deregistrationDelay: cdk.Duration.seconds(10),
       });
       //Import HTTPS Listener from ./shared
@@ -390,8 +409,8 @@ export class FargateStack extends cdk.Stack {
         action: elbv2.ListenerAction.forward([targetGroup]),
       });
 
-      cdk.Tags.of(targetGroup).add(`Environment`, `${props.environment}`);
-      cdk.Tags.of(HTTPSListener).add(`Environment`, `${props.environment}`);
+      addStandardTags(targetGroup, taggingProps);
+      addStandardTags(HTTPSListener, taggingProps);
     }
 
     if (props.loadBalancerDns != undefined) {
@@ -412,34 +431,26 @@ export class FargateStack extends cdk.Stack {
      * Adding if condition so that this stack only gets deployed once
      */
 
-    if (this.region === "us-east-1") {
-      const pipelineStack = new PipelineStack(this, `${prefix}-pipeline-cdk`, {
-        stackName: `${prefix}-pipeline-cdk`,
-        env: mgmt,
-        description: `Codepipeline resources for ${props.service}`,
-        terminationProtection: false,
-        project: props.project,
-        vpcId: `${process.env.MGMT_VPC}`, //MGMT VPC
-        service: props.service,
-        ecsCluster: props.project,
-        ecsService: fargateService.serviceName,
-        desiredCount: props.desiredCount,
-        roleARN: ecsTaskRole.roleArn,
-        environment: props.environment,
-        github: props.github,
-        ecrURI: `${process.env.CDK_DEFAULT_ACCOUNT}.dkr.ecr.us-east-1.amazonaws.com/${props.project}-${props.service}`, //ecrRepository.repositoryUri,
-        targetBranch: props.imageTag,
-        imageTag: props.imageTag,
-      });
-
-      cdk.Tags.of(pipelineStack).add(`Environment`, `${props.environment}`);
-    }
-
-    /************************** TAGS *************************************/
-
-    const taggedResources = [container, fargateService, ecsTaskRole, logGroup, fargateSecurityGroup, taskDef];
-    taggedResources.forEach((resource) => {
-      cdk.Tags.of(resource).add(`Environment`, `${props.environment}`);
+    const pipelineStack = new PipelineStack(this, `${prefix}-pipeline-cdk`, {
+      stackName: `${prefix}-pipeline-cdk`,
+      env: mgmt,
+      description: `Codepipeline resources for ${props.service}`,
+      terminationProtection: false,
+      project: props.project,
+      vpcId: `${process.env.MGMT_VPC}`, //MGMT VPC
+      service: props.service,
+      ecsCluster: props.project,
+      ecsService: service.serviceName,
+      desiredCount: props.desiredCount,
+      roleARN: ecsTaskRole.roleArn,
+      environment: props.environment,
+      github: props.github,
+      ecrURI: `${process.env.CDK_DEFAULT_ACCOUNT}.dkr.ecr.us-east-1.amazonaws.com/${props.project}-${props.service}`, //ecrRepository.repositoryUri,
+      targetBranch: props.imageTag,
+      imageTag: props.imageTag,
+      secretVariables: props.secretVariables,
     });
+
+    addStandardTags(pipelineStack, taggingProps);
   }
 }

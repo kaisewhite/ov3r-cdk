@@ -1,13 +1,49 @@
 import * as codebuild from "aws-cdk-lib/aws-codebuild";
 
+interface NextJSDockerProps {
+  imageTag: string;
+  ecrURI: string;
+  region: string;
+  secretVariables: string[];
+}
+
+export const NextJSDockerBuildSpec = ({ imageTag, ecrURI, region, secretVariables }: NextJSDockerProps) => {
+  return codebuild.BuildSpec.fromObject({
+    version: "0.2",
+    phases: {
+      install: {
+        "runtime-versions": { nodejs: "22" },
+      },
+      pre_build: {
+        commands: [
+          "echo Logging in to Amazon ECR...",
+          "aws --version",
+          "echo $NEXT_PUBLIC_OPENAI_API_KEY",
+          `aws ecr get-login-password --region ${region} | docker login --username AWS --password-stdin ${ecrURI}`,
+        ],
+      },
+      build: {
+        commands: [
+          "echo Build started on `date`",
+          "echo Building the Docker image...",
+          `docker build . -t ${ecrURI}:${imageTag}`,
+          //`docker build ${secretVariables.map((secret) => `--build-arg ${secret}=$${secret}`).join(" ")} . -t ${ecrURI}:${imageTag}`,
+        ],
+      },
+      post_build: {
+        commands: ["echo Build completed on `date`", "echo Pushing the Docker images...", `docker push ${ecrURI}:${imageTag}`],
+      },
+    },
+  });
+};
+
 interface dockerProps {
-  account: string;
   imageTag: string;
   ecrURI: string;
   region: string;
 }
 
-export const dockerBuildSpec = ({ imageTag, ecrURI, account, region }: dockerProps) => {
+export const dockerBuildSpec = ({ imageTag, ecrURI, region }: dockerProps) => {
   return codebuild.BuildSpec.fromObject({
     version: "0.2",
     phases: {

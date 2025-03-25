@@ -17,7 +17,7 @@ import * as codestarnotifications from "aws-cdk-lib/aws-codestarnotifications";
 import * as s3 from "aws-cdk-lib/aws-s3";
 dotenv.config();
 
-import { dockerBuildSpec, ecsDeploymentBuildSpec } from "./buildspec";
+import { dockerBuildSpec, ecsDeploymentBuildSpec, NextJSDockerBuildSpec } from "./buildspec";
 
 export interface PipelineStackProps extends cdk.StackProps {
   readonly project: string;
@@ -32,7 +32,7 @@ export interface PipelineStackProps extends cdk.StackProps {
   readonly ecrURI: string;
   readonly vpcId: string;
   readonly desiredCount: number;
-  //readonly secretsCompleteArn: string;
+  readonly secretVariables: string[] | undefined;
 }
 export class PipelineStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: PipelineStackProps) {
@@ -93,11 +93,29 @@ export class PipelineStack extends cdk.Stack {
 
     securityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.allTraffic(), "Allow Traffic");
 
-    //const database_url = secretsmanager.Secret.fromSecretAttributes(this, `import-${prefix}-postgres-url`, {
-    //  secretPartialArn: `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${props.project}-database-connection-strings`,
-    //});
-    //
-    //database_url.grantRead(role);
+    const secret = secretsmanager.Secret.fromSecretAttributes(this, `import-${prefix}-pipeline-environment-variables`, {
+      secretPartialArn: `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${props.project}-pipeline-environment-variables`,
+    });
+
+    secret.grantRead(role);
+
+    // Generate container secrets based on the specified list of secret names.
+    const generateSecrets = (list: string[] | undefined) => {
+      let environmentVariables: { [key: string]: codebuild.BuildEnvironmentVariable } = {};
+
+      list?.forEach((item) => {
+        environmentVariables[item] = {
+          type: codebuild.BuildEnvironmentVariableType.SECRETS_MANAGER,
+          value: `${secret.secretArn}:${item}::`,
+        };
+      });
+
+      return environmentVariables;
+    };
+
+    const buildSpec = props.service.includes("web")
+      ? NextJSDockerBuildSpec({ imageTag: props.imageTag, ecrURI: props.ecrURI, region: this.region, secretVariables: props.secretVariables! })
+      : dockerBuildSpec({ imageTag: props.imageTag, ecrURI: props.ecrURI, region: this.region });
 
     const build = new codebuild.Project(this, `${prefix}-codebuild-project`, {
       source: gitHubSource,
@@ -107,12 +125,13 @@ export class PipelineStack extends cdk.Stack {
       vpc: vpc,
       subnetSelection: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       securityGroups: [securityGroup],
-      buildSpec: dockerBuildSpec({ account: this.account, imageTag: props.imageTag, ecrURI: props.ecrURI, region: this.region }),
+      cache: codebuild.Cache.local(codebuild.LocalCacheMode.CUSTOM, codebuild.LocalCacheMode.DOCKER_LAYER),
+      buildSpec: buildSpec,
       environment: {
         computeType: codebuild.ComputeType.SMALL,
         buildImage: codebuild.LinuxBuildImage.STANDARD_7_0,
         privileged: true,
-        environmentVariables: {},
+        environmentVariables: props.service.includes("web") ? generateSecrets(props.secretVariables) : undefined,
       },
       logging: {
         cloudWatch: {
