@@ -7,6 +7,7 @@ import { FargateStack as DefaultFargateService } from "../fargate/default";
 import { FargateStack as WebSvcFargateService } from "../fargate/web-svc";
 import { services } from "../../../properties/index";
 import { addStandardTags } from "../../../helpers/tag_resources";
+import { PostgresStack } from "../fargate/postgres";
 
 export interface MainStackProps extends cdk.StackProps {
   readonly environment: string;
@@ -17,6 +18,7 @@ export interface MainStackProps extends cdk.StackProps {
   readonly certificate?: string;
   readonly whitelist?: Array<{ address: string; description: string }>;
   readonly loadBalancerDns?: string;
+  readonly nlbLoadBalancerDns?: string;
 }
 export class MainStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: MainStackProps) {
@@ -51,10 +53,33 @@ export class MainStack extends cdk.Stack {
       },
     });
 
+
+
     services.forEach((service) => {
       /**************************** COMPUTE RESOURCES ********************************/
       if (service.envs.includes(props.environment)) {
         switch (service.name) {
+          case "postgres":
+            const postgres = new PostgresStack(this, `${props.environment}-${props.project}-${service.name}-cdk`, {
+              stackName: `${props.environment}-${props.project}-${service.name}-cdk`,
+              environment: props.environment,
+              project: props.project,
+              nlbLoadBalancerDns: props.nlbLoadBalancerDns,
+              hostHeaders: service.properties[props.environment].hostHeaders,
+              service: service.name,
+              memoryLimitMiB: service.properties[props.environment].memoryLimitMiB,
+              cpu: service.properties[props.environment].cpu,
+              vpcId: props.vpcId,
+              whitelist: props.whitelist,
+              env: { account: this.account, region: this.region },
+              description: "Postgres database running on docker/fargate",
+              tags: {
+                Environment: props.environment,
+                Project: props.project,
+                Service: service.name,
+              },
+            });
+            break;
           case "comprehend-web-svc":
             const webSvc = new WebSvcFargateService(this, `${props.environment}-${props.project}-${service.name}-cdk`, {
               stackName: `${props.environment}-${props.project}-${service.name}-cdk`,
@@ -66,14 +91,14 @@ export class MainStack extends cdk.Stack {
               desiredCount: service.properties[props.environment].desiredCount,
               secretVariables: service.secrets,
               internetFacing: false,
-              healthCheck: service.healthCheck,
+              healthCheck: service.healthCheck!,
               targetGroupPriority: service.properties[props.environment].priority,
               imageTag: props.imageTag,
               domain: props.domain,
               loadBalancerDns: props.loadBalancerDns,
               certificate: props.certificate,
-              hostHeaders: service.properties[props.environment].hostHeaders.length != 0 ? service.properties[props.environment].hostHeaders : undefined,
-              github: service.github,
+              hostHeaders: service.properties[props.environment].hostHeaders,
+              github: service.github!,
               vpcId: props.vpcId,
               whitelist: props.whitelist,
               memoryLimitMiB: service.properties[props.environment].memoryLimitMiB,
@@ -98,14 +123,14 @@ export class MainStack extends cdk.Stack {
               desiredCount: service.properties[props.environment].desiredCount,
               secretVariables: service.secrets,
               internetFacing: false,
-              healthCheck: service.healthCheck,
+              healthCheck: service.healthCheck!,
               targetGroupPriority: service.properties[props.environment].priority,
               imageTag: props.imageTag,
               domain: props.domain,
               loadBalancerDns: props.loadBalancerDns,
               certificate: props.certificate,
-              hostHeaders: service.properties[props.environment].hostHeaders.length != 0 ? service.properties[props.environment].hostHeaders : undefined,
-              github: service.github,
+              hostHeaders: service.properties[props.environment].hostHeaders,
+              github: service.github!,
               vpcId: props.vpcId,
               whitelist: props.whitelist,
               memoryLimitMiB: service.properties[props.environment].memoryLimitMiB,

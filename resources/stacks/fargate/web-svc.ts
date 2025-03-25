@@ -42,7 +42,7 @@ export interface FargateStackStackProps extends cdk.StackProps {
   readonly targetGroupPriority?: number;
   readonly microService?: boolean;
   readonly loadBalancerDns?: string;
-  readonly hostHeaders?: string[] | undefined;
+  readonly hostHeaders: string;
   readonly containerPort?: number;
   readonly whitelist?: Array<{ address: string; description: string }>;
 }
@@ -405,7 +405,7 @@ export class FargateStack extends cdk.Stack {
       //Setup Listener Action
       HTTPSListener.addAction(`${prefix}-https-listener-action`, {
         priority: props.targetGroupPriority,
-        conditions: [elbv2.ListenerCondition.hostHeaders(props.hostHeaders)],
+        conditions: [elbv2.ListenerCondition.hostHeaders([props.hostHeaders])],
         action: elbv2.ListenerAction.forward([targetGroup]),
       });
 
@@ -422,7 +422,7 @@ export class FargateStack extends cdk.Stack {
         project: props.project,
         value: props.loadBalancerDns,
         hostedZoneName: `${process.env.DOMAIN}`,
-        recordName: props.hostHeaders?.[0] ?? "",
+        recordName: props.hostHeaders,
       });
     }
 

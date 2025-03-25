@@ -1,6 +1,5 @@
-//import * as cdk from "aws-cdk-lib/core";
 import * as cdk from "aws-cdk-lib";
-import { Construct, IConstruct } from "constructs";
+import { Construct } from "constructs";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as ecr from "aws-cdk-lib/aws-ecr";
@@ -8,15 +7,9 @@ import * as ecs from "aws-cdk-lib/aws-ecs";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import * as elbv2 from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import * as logs from "aws-cdk-lib/aws-logs";
-import * as route53 from "aws-cdk-lib/aws-route53";
 import { PipelineStack } from "../../pipelines/index";
-import * as applicationautoscaling from "aws-cdk-lib/aws-applicationautoscaling";
-import * as destinations from "aws-cdk-lib/aws-logs-destinations";
-import * as lambda from "aws-cdk-lib/aws-lambda";
-import * as elasticache from "aws-cdk-lib/aws-elasticache";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import { Route53CreateCNAMEStack } from "../../../resources/stacks/shared/index";
-import * as ssm from "aws-cdk-lib/aws-ssm";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
 import { addStandardTags } from "../../../helpers/tag_resources";
@@ -42,7 +35,7 @@ export interface FargateStackStackProps extends cdk.StackProps {
   readonly targetGroupPriority?: number;
   readonly microService?: boolean;
   readonly loadBalancerDns?: string;
-  readonly hostHeaders?: string[] | undefined;
+  readonly hostHeaders: string;
   readonly containerPort?: number;
   readonly whitelist?: Array<{ address: string; description: string }>;
 }
@@ -405,7 +398,7 @@ export class FargateStack extends cdk.Stack {
       //Setup Listener Action
       HTTPSListener.addAction(`${prefix}-https-listener-action`, {
         priority: props.targetGroupPriority,
-        conditions: [elbv2.ListenerCondition.hostHeaders(props.hostHeaders)],
+        conditions: [elbv2.ListenerCondition.hostHeaders([props.hostHeaders])],
         action: elbv2.ListenerAction.forward([targetGroup]),
       });
 
@@ -422,7 +415,7 @@ export class FargateStack extends cdk.Stack {
         project: props.project,
         value: props.loadBalancerDns,
         hostedZoneName: `${process.env.DOMAIN}`,
-        recordName: props.hostHeaders?.[0] ?? "",
+        recordName: props.hostHeaders,
       });
     }
 

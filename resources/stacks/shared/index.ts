@@ -308,7 +308,6 @@ export class Route53CreateCNAMEStack extends cdk.Stack {
     new route53.CnameRecord(this, `${prefix}-route53-cname-record`, {
       domainName: props.value,
       zone: hostedZone,
-      // the properties below are optional
       comment: `Create the CNAME record for ${prefix} in ${props.hostedZoneName}`,
       recordName: props.recordName,
       ttl: cdk.Duration.minutes(30),

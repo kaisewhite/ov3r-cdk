@@ -1,5 +1,5 @@
 interface propertiesConfig {
-  hostHeaders: string[];
+  hostHeaders: string;
   priority: number;
   desiredCount: number;
   memoryLimitMiB: number;
@@ -10,21 +10,29 @@ interface Service {
   name: string;
   type: string;
   envs: string[];
-  github: string;
+  github?: string
   properties: { [key: string]: propertiesConfig };
   secrets?: string[];
-  healthCheck: string;
+  healthCheck?: string;
 }
 
 export const services: Service[] = [
+  {
+    name: "postgres",
+    type: "fargate",
+    envs: ["dev"],
+    properties: {
+      dev: { hostHeaders: "postgres.dev.ov3r.tech", priority: 1, memoryLimitMiB: 1024, cpu: 512, desiredCount: 1 },
+    },
+  },
   {
     name: "comprehend-query",
     type: "fargate",
     envs: ["dev"],
     github: "comprehend-query",
     properties: {
-      dev: { hostHeaders: ["query.dev.ov3r.tech"], priority: 3, memoryLimitMiB: 1024, cpu: 512, desiredCount: 1 },
-      prod: { hostHeaders: ["query.ov3r.tech"], priority: 3, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
+      dev: { hostHeaders: "query.dev.ov3r.tech", priority: 3, memoryLimitMiB: 1024, cpu: 512, desiredCount: 1 },
+      prod: { hostHeaders: "query.ov3r.tech", priority: 3, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
     },
     healthCheck: "/healthcheck",
     secrets: [
@@ -46,8 +54,8 @@ export const services: Service[] = [
     envs: ["dev", "prod"],
     github: "comprehend-web",
     properties: {
-      dev: { hostHeaders: ["console.dev.ov3r.tech"], priority: 1, memoryLimitMiB: 1024, cpu: 512, desiredCount: 1 },
-      prod: { hostHeaders: ["console.ov3r.tech"], priority: 1, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
+      dev: { hostHeaders: "console.dev.ov3r.tech", priority: 1, memoryLimitMiB: 1024, cpu: 512, desiredCount: 1 },
+      prod: { hostHeaders: "console.ov3r.tech", priority: 1, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
     },
     healthCheck: "/healthcheck",
     secrets: [
@@ -66,8 +74,8 @@ export const services: Service[] = [
     envs: ["dev", "prod"],
     github: "enframe",
     properties: {
-      dev: { hostHeaders: ["enframe.dev.ov3r.tech"], priority: 7, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
-      prod: { hostHeaders: ["enframe.ov3r.tech"], priority: 7, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
+      dev: { hostHeaders: "enframe.dev.ov3r.tech", priority: 7, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
+      prod: { hostHeaders: "enframe.ov3r.tech", priority: 7, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
     },
     healthCheck: "/healthcheck",
     secrets: [
