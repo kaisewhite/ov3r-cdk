@@ -59,8 +59,7 @@ export const services: Service[] = [
     },
     healthCheck: "/healthcheck",
     secrets: [
-      "NEXT_PUBLIC_USER_ID",
-      "NEXT_PUBLIC_CHAT_ID",
+      "NEXT_PUBLIC_QUERY_API_URL",
       "NEXT_PUBLIC_OPENAI_API_KEY",
       "NEXT_PUBLIC_OPEN_AI_MODEL_NAME",
       "NEXT_PUBLIC_REDIS_CACHE_HOST_ENDPOINT",

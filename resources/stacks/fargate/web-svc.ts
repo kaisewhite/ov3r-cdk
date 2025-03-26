@@ -106,17 +106,7 @@ export class FargateStack extends cdk.Stack {
 
     /**************************************************************************************** */
 
-    const documentStorageBucket = new s3.Bucket(this, `${prefix}-document-storage`, {
-      bucketName: `${prefix}-document-storage`,
-      versioned: false,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      autoDeleteObjects: true,
-      objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
-      accessControl: s3.BucketAccessControl.BUCKET_OWNER_FULL_CONTROL,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ACLS,
-      publicReadAccess: true,
-    });
-    addStandardTags(documentStorageBucket, taggingProps);
+
 
     const ecsTaskRole = new iam.Role(this, `${prefix}-ecs-task-role`, {
       assumedBy: new iam.CompositePrincipal(
@@ -129,7 +119,7 @@ export class FargateStack extends cdk.Stack {
 
     secrets.grantRead(ecsTaskRole);
     ecrRepository.grantPullPush(new iam.ArnPrincipal(ecsTaskRole.roleArn));
-    documentStorageBucket.grantReadWrite(ecsTaskRole);
+
 
     /**
      * This permission is needed so the ecs task can pull the image from the mgmt account
@@ -238,12 +228,9 @@ export class FargateStack extends cdk.Stack {
       ],
       secrets: generateSecrets(props.secretVariables),
       environment: {
-        REGION: this.region,
+
         PORT: `80`,
-        HOST_HEADER: props.hostHeaders?.[0] ?? "",
-        //NODE_ENV: props.environment === "prod" ? "production" : "development",
-        //NEXT_PUBLIC_APP_ENV: props.environment === "prod" ? "production" : "development",
-        S3_BUCKET_NAME: documentStorageBucket.bucketName,
+
       },
     });
 

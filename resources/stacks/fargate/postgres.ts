@@ -10,7 +10,7 @@ import * as efs from "aws-cdk-lib/aws-efs";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as elbv2 from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import * as backup from "aws-cdk-lib/aws-backup";
-import { Route53CreateCNAMEStack } from "../shared/index";
+import * as route53 from "aws-cdk-lib/aws-route53";
 
 const mgmt = { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION };
 
@@ -349,7 +349,69 @@ export class PostgresStack extends cdk.Stack {
         // Ensure service depends on EFS
         service.node.addDependency(fileSystem);
 
+        /**
+             * EventBridge Rules for ecs-service Service
+             * Start Fargate Service at 05:00 EST (10:00 UTC)
+             * Stop ecs-service at 23:00 EST (04:00 UTC next day)
+             */
+        // Start Fargate Service service at 05:00 EST (10:00 UTC)
+        const startRule = new events.Rule(this, `${prefix}-start-ecs-service-rule`, {
+            schedule: events.Schedule.cron({
+                minute: "0",
+                hour: "14",
+                month: "*",
+                day: "*",
+            }),
+            enabled: false,
+            ruleName: `${props.service}-start-ecs-service`,
+            description: `Start Fargate Service service at 05:00 EST (10:00 UTC)`,
+            targets: [
+                new targets.AwsApi({
+                    service: "ECS",
+                    action: "updateService",
+                    parameters: {
+                        cluster: ecsCluster.clusterName,
+                        service: `${service.serviceName}`,
+                        desiredCount: 1,
+                    },
+                    catchErrorPattern: "ServiceNotFoundException",
+                    policyStatement: new iam.PolicyStatement({
+                        actions: ["ecs:UpdateService"],
+                        resources: [service.serviceArn],
+                    }),
+                }),
+            ],
+        });
+        addStandardTags(startRule, taggingProps);
 
+        // Stop ecs-service service at 23:00 EST (04:00 UTC next day)
+        const stopRule = new events.Rule(this, `${prefix}-stop-ecs-service-rule`, {
+            schedule: events.Schedule.cron({
+                minute: "0",
+                hour: "2", // 04:00 UTC = 23:00 EST (previous day)
+                month: "*",
+                day: "*",
+            }),
+            ruleName: `${props.service}-stop-ecs-service`,
+            description: `Stop ecs-service service at 23:00 EST (04:00 UTC next day)`,
+            targets: [
+                new targets.AwsApi({
+                    service: "ECS",
+                    action: "updateService",
+                    parameters: {
+                        cluster: ecsCluster.clusterName,
+                        service: `${service.serviceName}`,
+                        desiredCount: 0,
+                    },
+                    catchErrorPattern: "ServiceNotFoundException",
+                    policyStatement: new iam.PolicyStatement({
+                        actions: ["ecs:UpdateService"],
+                        resources: [service.serviceArn],
+                    }),
+                }),
+            ],
+        });
+        addStandardTags(stopRule, taggingProps);
 
         // =============================================
         // Load Balancer Configuration
@@ -400,20 +462,21 @@ export class PostgresStack extends cdk.Stack {
         // =============================================
         // DNS Configuration
         // =============================================
-        if (props.nlbLoadBalancerDns && props.hostHeaders) {
-            new Route53CreateCNAMEStack(this, `${prefix}-route53-cname-stack`, {
-                stackName: `${prefix}-route53-cname-stack`,
-                env: {
-                    account: process.env.CDK_DEFAULT_ACCOUNT,
-                    region: process.env.CDK_DEFAULT_REGION
-                },
-                environment: props.environment,
-                service: props.service,
-                project: props.project,
-                value: props.nlbLoadBalancerDns,
-                hostedZoneName: `${process.env.DOMAIN}`,
-                recordName: props.hostHeaders,
-            }).node.addDependency(networkLoadBalancer);
-        }
+
+        const hostedZone = route53.HostedZone.fromHostedZoneAttributes(this, `${prefix}-importing-hosted-zone`,
+            {
+                zoneName: `${props.project}.internal`,
+                hostedZoneId: cdk.Fn.importValue(`${props.environment}-${props.project}-internal-zone-id`)
+            }
+        );
+
+        new route53.CnameRecord(this, `${prefix}-route53-cname-record`, {
+            domainName: networkLoadBalancer.loadBalancerDnsName,
+            zone: hostedZone,
+            comment: `Create the CNAME record for ${prefix} in ${props.project}.internal`,
+            recordName: `${props.service}.${props.project}.internal`,
+            ttl: cdk.Duration.minutes(30),
+        });
+
     }
 }

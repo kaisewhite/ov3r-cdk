@@ -11,11 +11,12 @@ import * as codepipeline_actions from "aws-cdk-lib/aws-codepipeline-actions";
 import * as awslogs from "aws-cdk-lib/aws-logs";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as dotenv from "dotenv";
+dotenv.config();
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as codestarnotifications from "aws-cdk-lib/aws-codestarnotifications";
 import * as s3 from "aws-cdk-lib/aws-s3";
-dotenv.config();
+
 
 import { dockerBuildSpec, ecsDeploymentBuildSpec, NextJSDockerBuildSpec } from "./buildspec";
 

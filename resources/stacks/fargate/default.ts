@@ -13,6 +13,7 @@ import { Route53CreateCNAMEStack } from "../../../resources/stacks/shared/index"
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
 import { addStandardTags } from "../../../helpers/tag_resources";
+import * as route53 from "aws-cdk-lib/aws-route53";
 
 const mgmt = { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION };
 
@@ -307,7 +308,7 @@ export class FargateStack extends cdk.Stack {
     const startRule = new events.Rule(this, `${prefix}-start-ecs-service-rule`, {
       schedule: events.Schedule.cron({
         minute: "0",
-        hour: "10", // 10:00 UTC = 05:00 EST
+        hour: "14",
         month: "*",
         day: "*",
       }),
@@ -404,6 +405,23 @@ export class FargateStack extends cdk.Stack {
 
       addStandardTags(targetGroup, taggingProps);
       addStandardTags(HTTPSListener, taggingProps);
+    }
+
+    if (props.loadBalancerDns != undefined) {
+      const hostedZone = route53.HostedZone.fromHostedZoneAttributes(this, `${prefix}-importing-hosted-zone`,
+        {
+          zoneName: `${props.project}.internal`,
+          hostedZoneId: cdk.Fn.importValue(`${props.environment}-${props.project}-internal-zone-id`)
+        }
+      );
+
+      new route53.CnameRecord(this, `${prefix}-route53-cname-record`, {
+        domainName: props.loadBalancerDns,
+        zone: hostedZone,
+        comment: `Create the CNAME record for ${prefix} in ${props.project}.internal`,
+        recordName: `${props.service}.${props.project}.internal`,
+        ttl: cdk.Duration.minutes(30),
+      });
     }
 
     if (props.loadBalancerDns != undefined) {

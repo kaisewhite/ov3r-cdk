@@ -26,8 +26,8 @@ export const NextJSDockerBuildSpec = ({ imageTag, ecrURI, region, secretVariable
         commands: [
           "echo Build started on `date`",
           "echo Building the Docker image...",
-          `docker build . -t ${ecrURI}:${imageTag}`,
-          //`docker build ${secretVariables.map((secret) => `--build-arg ${secret}=$${secret}`).join(" ")} . -t ${ecrURI}:${imageTag}`,
+          //`docker build . -t ${ecrURI}:${imageTag}`,
+          `docker build ${secretVariables.map((secret) => `--build-arg ${secret}=$${secret}`).join(" ")} . -t ${ecrURI}:${imageTag}`,
         ],
       },
       post_build: {

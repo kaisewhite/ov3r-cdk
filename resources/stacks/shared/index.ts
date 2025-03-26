@@ -9,10 +9,8 @@ import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as chatbot from "aws-cdk-lib/aws-chatbot";
 import * as route53 from "aws-cdk-lib/aws-route53";
-import * as ssm from "aws-cdk-lib/aws-ssm";
 import { services } from "../../../properties";
 import { addStandardTags } from "../../../helpers/tag_resources";
-import * as sm from "aws-cdk-lib/aws-secretsmanager";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 
 export interface MGMTStackProps extends cdk.StackProps {
@@ -283,6 +281,20 @@ export class SharedServicesStack extends cdk.Stack {
       priority: 30,
       conditions: [elbv2.ListenerCondition.pathPatterns(["/healthcheck"])],
       action: elbv2.ListenerAction.fixedResponse(200, { messageBody: JSON.stringify({ response: 200, message: "healthy" }) }),
+    });
+
+    /*************** Internal DNS ***************/
+
+    const internalZone = new route53.PrivateHostedZone(this, `${prefix}-internal-zone`, {
+      zoneName: `${props.project}.internal`,
+      vpc: vpc,
+    });
+    addStandardTags(internalZone, taggingProps);
+
+    new cdk.CfnOutput(this, `${prefix}-internal-zone-id`, {
+      value: internalZone.hostedZoneId,
+      description: "The ID for the internal zone",
+      exportName: `${prefix}-internal-zone-id`,
     });
   }
 }
