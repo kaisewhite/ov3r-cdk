@@ -1,5 +1,5 @@
 interface propertiesConfig {
-  hostHeaders: string;
+  hostHeader: string;
   priority: number;
   desiredCount: number;
   memoryLimitMiB: number;
@@ -22,7 +22,7 @@ export const services: Service[] = [
     type: "fargate",
     envs: ["dev"],
     properties: {
-      dev: { hostHeaders: "postgres.dev.ov3r.tech", priority: 1, memoryLimitMiB: 1024, cpu: 512, desiredCount: 1 },
+      dev: { hostHeader: "postgres.dev.ov3r.tech", priority: 1, memoryLimitMiB: 1024, cpu: 512, desiredCount: 1 },
     },
   },
   {
@@ -31,10 +31,10 @@ export const services: Service[] = [
     envs: ["dev"],
     github: "comprehend-query",
     properties: {
-      dev: { hostHeaders: "query.dev.ov3r.tech", priority: 3, memoryLimitMiB: 1024, cpu: 512, desiredCount: 1 },
-      prod: { hostHeaders: "query.ov3r.tech", priority: 3, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
+      dev: { hostHeader: "query.dev.ov3r.tech", priority: 3, memoryLimitMiB: 1024, cpu: 512, desiredCount: 1 },
+      prod: { hostHeader: "query.ov3r.tech", priority: 3, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
     },
-    healthCheck: "/healthcheck",
+    healthCheck: "/healthCheck",
     secrets: [
       "PGHOST",
       "PGPORT",
@@ -54,10 +54,10 @@ export const services: Service[] = [
     envs: ["dev", "prod"],
     github: "comprehend-web",
     properties: {
-      dev: { hostHeaders: "console.dev.ov3r.tech", priority: 1, memoryLimitMiB: 1024, cpu: 512, desiredCount: 1 },
-      prod: { hostHeaders: "console.ov3r.tech", priority: 1, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
+      dev: { hostHeader: "console.dev.ov3r.tech", priority: 1, memoryLimitMiB: 1024, cpu: 512, desiredCount: 1 },
+      prod: { hostHeader: "console.ov3r.tech", priority: 1, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
     },
-    healthCheck: "/healthcheck",
+    healthCheck: "/healthCheck",
     secrets: [
       "NEXT_PUBLIC_QUERY_API_URL",
       "NEXT_PUBLIC_OPENAI_API_KEY",
@@ -67,28 +67,28 @@ export const services: Service[] = [
       "OPENAI_API_KEY",
     ],
   },
-  {
-    name: "enframe-svc",
-    type: "fargate",
-    envs: ["dev", "prod"],
-    github: "enframe",
-    properties: {
-      dev: { hostHeaders: "enframe.dev.ov3r.tech", priority: 7, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
-      prod: { hostHeaders: "enframe.ov3r.tech", priority: 7, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
-    },
-    healthCheck: "/healthcheck",
-    secrets: [
-      "PGHOST",
-      "PGPORT",
-      "PGUSER",
-      "PGPASSWORD",
-      "PGDATABASE",
-      "OPENAI_API_KEY",
-      "OPEN_AI_MODEL_NAME",
-      "REDIS_CACHE_HOST_ENDPOINT",
-      "NEXT_PUBLIC_APP_ENV",
-      "DEFAULT_CACHE_TTL",
-      "NEXT_PUBLIC_OPEN_WEATHER_API_KEY",
-    ],
-  },
+  /*   {
+      name: "enframe-svc",
+      type: "fargate",
+      envs: ["dev", "prod"],
+      github: "enframe",
+      properties: {
+        dev: { hostHeader: "enframe.dev.ov3r.tech", priority: 7, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
+        prod: { hostHeader: "enframe.ov3r.tech", priority: 7, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
+      },
+      healthCheck: "/healthCheck",
+      secrets: [
+        "PGHOST",
+        "PGPORT",
+        "PGUSER",
+        "PGPASSWORD",
+        "PGDATABASE",
+        "OPENAI_API_KEY",
+        "OPEN_AI_MODEL_NAME",
+        "REDIS_CACHE_HOST_ENDPOINT",
+        "NEXT_PUBLIC_APP_ENV",
+        "DEFAULT_CACHE_TTL",
+        "NEXT_PUBLIC_OPEN_WEATHER_API_KEY",
+      ],
+    }, */
 ];

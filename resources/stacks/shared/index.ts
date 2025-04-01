@@ -279,7 +279,7 @@ export class SharedServicesStack extends cdk.Stack {
 
     HTTPSListener.addAction("Fixed", {
       priority: 30,
-      conditions: [elbv2.ListenerCondition.pathPatterns(["/healthcheck"])],
+      conditions: [elbv2.ListenerCondition.pathPatterns(["/healthCheck"])],
       action: elbv2.ListenerAction.fixedResponse(200, { messageBody: JSON.stringify({ response: 200, message: "healthy" }) }),
     });
 

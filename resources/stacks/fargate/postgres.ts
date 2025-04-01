@@ -22,7 +22,7 @@ export interface PostgresStackProps extends cdk.StackProps {
     readonly service: string;
     readonly environment: string;
     readonly loadBalancerDns?: string;
-    readonly hostHeaders: string;
+    readonly hostHeader: string;
     readonly vpcId: string;
     readonly memoryLimitMiB: number;
     readonly cpu: number;

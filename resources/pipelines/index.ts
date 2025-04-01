@@ -34,6 +34,7 @@ export interface PipelineStackProps extends cdk.StackProps {
   readonly vpcId: string;
   readonly desiredCount: number;
   readonly secretVariables: string[] | undefined;
+  readonly secretArn: string;
 }
 export class PipelineStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: PipelineStackProps) {
@@ -61,6 +62,7 @@ export class PipelineStack extends cdk.Stack {
 
     // Retrieve the S3 bucket used to store CodePipeline artifacts using its bucket name
 
+
     const role = new iam.Role(this, `${prefix}-pipeline-role`, {
       assumedBy: new iam.CompositePrincipal(
         new iam.ServicePrincipal("codepipeline.amazonaws.com"),
@@ -81,7 +83,7 @@ export class PipelineStack extends cdk.Stack {
     role.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        resources: [`arn:aws:iam::${process.env.CDK_DEV_ACCOUNT}:role/*`, props.roleARN], //
+        resources: [props.roleARN], //
         actions: ["sts:AssumeRole"],
       })
     );
@@ -95,7 +97,7 @@ export class PipelineStack extends cdk.Stack {
     securityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.allTraffic(), "Allow Traffic");
 
     const secret = secretsmanager.Secret.fromSecretAttributes(this, `import-${prefix}-pipeline-environment-variables`, {
-      secretPartialArn: `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${props.project}-pipeline-environment-variables`,
+      secretCompleteArn: props.secretArn,
     });
 
     secret.grantRead(role);

@@ -14,6 +14,7 @@ import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
 import { addStandardTags } from "../../../helpers/tag_resources";
 import * as route53 from "aws-cdk-lib/aws-route53";
+import * as kms from "aws-cdk-lib/aws-kms";
 
 const mgmt = { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION };
 
@@ -36,7 +37,7 @@ export interface FargateStackStackProps extends cdk.StackProps {
   readonly targetGroupPriority?: number;
   readonly microService?: boolean;
   readonly loadBalancerDns?: string;
-  readonly hostHeaders: string;
+  readonly hostHeader: string;
   readonly containerPort?: number;
   readonly whitelist?: Array<{ address: string; description: string }>;
 }
@@ -63,12 +64,25 @@ export class FargateStack extends cdk.Stack {
     // Add tags to the stack itself
     addStandardTags(this, taggingProps);
 
+    /**
+        * KMS Encryption Configuration
+        * Sets up encryption key for sensitive data
+        */
+    const kmsKey = new kms.Key(this, `${prefix}-rds-kms-key`, {
+      description: `KMS key for ${prefix}`,
+      enableKeyRotation: true,
+      alias: `${prefix}-rds-kms-key`,
+    });
+
+    kmsKey.grantDecrypt(new iam.AccountPrincipal(process.env.CDK_DEFAULT_ACCOUNT!));
+
     const secrets = new secretsmanager.Secret(this, `${prefix}-secret`, {
       secretName: prefix,
       secretObjectValue: {
         PUBLICA_API_TOKEN: cdk.SecretValue.unsafePlainText(""),
       },
       removalPolicy: cdk.RemovalPolicy.DESTROY,
+      encryptionKey: kmsKey,
       description: `Environment Variables for ${props.service} lambda fn`,
     });
     addStandardTags(secrets, taggingProps);
@@ -112,16 +126,64 @@ export class FargateStack extends cdk.Stack {
     });
     addStandardTags(documentStorageBucket, taggingProps);
 
+    /**
+        * IAM Role and Permissions Configuration
+        * Sets up IAM roles and policies for ECS task execution
+        */
     const ecsTaskRole = new iam.Role(this, `${prefix}-ecs-task-role`, {
       assumedBy: new iam.CompositePrincipal(
         new iam.AccountPrincipal(`${process.env.CDK_DEFAULT_ACCOUNT}`),
-        new iam.ServicePrincipal("ecs-tasks.amazonaws.com")
+        new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
+        new iam.ServicePrincipal("ecs.amazonaws.com"),
       ),
       roleName: `${prefix}-ecs-task-role`,
     });
     addStandardTags(ecsTaskRole, taggingProps);
 
     secrets.grantRead(ecsTaskRole);
+    ecrRepository.grantPullPush(new iam.ArnPrincipal(ecsTaskRole.roleArn));
+
+    /**
+     * Grant cross-account access to secrets for pipeline role
+     */
+    secrets.addToResourcePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      principals: [new iam.ArnPrincipal(`arn:aws:iam::${process.env.CDK_DEFAULT_ACCOUNT}:role/${prefix}-pipeline-role`)],
+      actions: ['secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret'],
+      resources: ['*']
+    }));
+
+    /**
+     * Configure cross-account image pulling permissions
+     */
+    ecsTaskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        resources: [`arn:aws:iam::${process.env.CDK_DEFAULT_ACCOUNT}:role/*`],
+        actions: ["sts:AssumeRole"],
+      })
+    );
+
+    ecsTaskRole.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName("service-role/AmazonECSTaskExecutionRolePolicy"));
+
+    /**
+     * Grant additional permissions for logs, S3, KMS, and ECR operations
+     */
+    ecsTaskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        resources: ["*"],
+        actions: [
+          "logs:*",
+          "s3:*",
+          "kms:*",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+          "ecr:BatchCheckLayerAvailability",
+          "ecs:UpdateService", "ecs:DescribeServices", "ecs:WaitUntilServiceStable"
+        ],
+      })
+    );
     ecrRepository.grantPullPush(new iam.ArnPrincipal(ecsTaskRole.roleArn));
     documentStorageBucket.grantReadWrite(ecsTaskRole);
 
@@ -234,7 +296,7 @@ export class FargateStack extends cdk.Stack {
       environment: {
         REGION: this.region,
         PORT: `80`,
-        HOST_HEADER: props.hostHeaders?.[0] ?? "",
+        HOST_HEADER: props.hostHeader,
         //NODE_ENV: props.environment === "prod" ? "production" : "development",
         //NEXT_PUBLIC_APP_ENV: props.environment === "prod" ? "production" : "development",
         S3_BUCKET_NAME: documentStorageBucket.bucketName,
@@ -365,7 +427,7 @@ export class FargateStack extends cdk.Stack {
 
     /***************************** TARGET GROUP *****************************/
 
-    if (props.hostHeaders != undefined) {
+    if (props.hostHeader != undefined) {
       const targetGroup = new elbv2.ApplicationTargetGroup(this, `${prefix}-target-group`, {
         port: 80,
         vpc: vpc,
@@ -399,7 +461,7 @@ export class FargateStack extends cdk.Stack {
       //Setup Listener Action
       HTTPSListener.addAction(`${prefix}-https-listener-action`, {
         priority: props.targetGroupPriority,
-        conditions: [elbv2.ListenerCondition.hostHeaders([props.hostHeaders])],
+        conditions: [elbv2.ListenerCondition.hostHeaders([props.hostHeader])],
         action: elbv2.ListenerAction.forward([targetGroup]),
       });
 
@@ -433,7 +495,7 @@ export class FargateStack extends cdk.Stack {
         project: props.project,
         value: props.loadBalancerDns,
         hostedZoneName: `${process.env.DOMAIN}`,
-        recordName: props.hostHeaders,
+        recordName: props.hostHeader,
       });
     }
 
@@ -450,6 +512,7 @@ export class FargateStack extends cdk.Stack {
       project: props.project,
       vpcId: `${process.env.MGMT_VPC}`, //MGMT VPC
       service: props.service,
+      secretArn: secrets.secretFullArn!,
       ecsCluster: props.project,
       ecsService: service.serviceName,
       desiredCount: props.desiredCount,
