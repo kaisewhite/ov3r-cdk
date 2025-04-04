@@ -9,7 +9,6 @@ import * as elbv2 from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import * as logs from "aws-cdk-lib/aws-logs";
 import { PipelineStack } from "../../pipelines/index";
 import * as s3 from "aws-cdk-lib/aws-s3";
-import { Route53CreateCNAMEStack } from "../../../resources/stacks/shared/index";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
 import { addStandardTags } from "../../../helpers/tag_resources";
@@ -33,7 +32,6 @@ export interface FargateStackStackProps extends cdk.StackProps {
   readonly github: string;
   readonly memoryLimitMiB: number;
   readonly cpu: number;
-  readonly certificate?: string;
   readonly targetGroupPriority?: number;
   readonly microService?: boolean;
   readonly loadBalancerDns?: string;
@@ -255,10 +253,8 @@ export class FargateStack extends cdk.Stack {
 
     fargateSecurityGroup.addIngressRule(ec2.Peer.ipv4(vpc.vpcCidrBlock), ec2.Port.tcp(80), `Allow TCP Traffic for ${vpc.vpcId}`);
     fargateSecurityGroup.addIngressRule(ec2.Peer.ipv4(vpc.vpcCidrBlock), ec2.Port.allIcmp(), "Allow all ICMP traffic");
-    props.whitelist?.forEach((ip) => {
-      fargateSecurityGroup.addIngressRule(ec2.Peer.ipv4(ip.address), ec2.Port.tcp(80), `Allow TCP Traffic for ${ip.description}`);
-      fargateSecurityGroup.addIngressRule(ec2.Peer.ipv4(ip.address), ec2.Port.allIcmp(), `Allow ICMP Ping for ${ip.description}`);
-    });
+    fargateSecurityGroup.addIngressRule(ec2.Peer.ipv4("10.0.0.0/24"), ec2.Port.tcp(80), `Allow TCP Traffic for management vpc`);
+    fargateSecurityGroup.addIngressRule(ec2.Peer.ipv4("10.0.0.0/24"), ec2.Port.allIcmp(), `Allow ICMP Ping for management vpc`);
 
     const taskDef = new ecs.FargateTaskDefinition(this, `${prefix}-fargate-task-definition`, {
       family: prefix,
@@ -469,35 +465,18 @@ export class FargateStack extends cdk.Stack {
       addStandardTags(HTTPSListener, taggingProps);
     }
 
-    if (props.loadBalancerDns != undefined) {
-      const hostedZone = route53.HostedZone.fromHostedZoneAttributes(this, `${prefix}-importing-hosted-zone`,
-        {
-          zoneName: `${props.project}.internal`,
-          hostedZoneId: cdk.Fn.importValue(`${props.environment}-${props.project}-internal-zone-id`)
-        }
-      );
 
-      new route53.CnameRecord(this, `${prefix}-route53-cname-record`, {
-        domainName: props.loadBalancerDns,
-        zone: hostedZone,
-        comment: `Create the CNAME record for ${prefix} in ${props.project}.internal`,
-        recordName: `${props.service}.${props.project}.internal`,
-        ttl: cdk.Duration.minutes(30),
-      });
-    }
+    const hostedZone = route53.HostedZone.fromLookup(this, `${prefix}-importing-hosted-zone`, {
+      domainName: `${props.environment}.${props.domain}`, //e.g. example.com
+    });
 
-    if (props.loadBalancerDns != undefined) {
-      new Route53CreateCNAMEStack(this, `${prefix}-route53-cname-stack`, {
-        stackName: `${prefix}-route53-cname-stack`,
-        env: mgmt,
-        environment: props.environment,
-        service: props.service,
-        project: props.project,
-        value: props.loadBalancerDns,
-        hostedZoneName: `${process.env.DOMAIN}`,
-        recordName: props.hostHeader,
-      });
-    }
+    new route53.CnameRecord(this, `${prefix}-route53-cname-record`, {
+      domainName: cdk.Fn.importValue(`${props.environment}-${props.project}-load-balancer-dns`),
+      zone: hostedZone,
+      comment: `Create the CNAME record for ${prefix} in ${props.project}.internal`,
+      recordName: `${props.service}.${props.environment}.${props.domain}`,
+      ttl: cdk.Duration.minutes(30),
+    });
 
     /************************************ CODEPIPELINE STACK ******************************************** */
     /**

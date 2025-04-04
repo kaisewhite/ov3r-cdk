@@ -21,7 +21,7 @@ export interface PostgresStackProps extends cdk.StackProps {
     readonly project: string;
     readonly service: string;
     readonly environment: string;
-    readonly loadBalancerDns?: string;
+    readonly domain: string;
     readonly hostHeader: string;
     readonly vpcId: string;
     readonly memoryLimitMiB: number;
@@ -142,24 +142,15 @@ export class PostgresStack extends cdk.Stack {
             "Allow ICMP from within VPC"
         );
 
-        // Add whitelist rules if specified
-        props.whitelist?.forEach((ip) => {
-            securityGroup.addIngressRule(
-                ec2.Peer.ipv4(ip.address),
-                ec2.Port.tcp(5432),
-                `Allow PostgreSQL for ${ip.description}`
-            );
-            securityGroup.addIngressRule(
-                ec2.Peer.ipv4(ip.address),
-                ec2.Port.tcp(80),
-                `Allow TCP Traffic for ${ip.description}`
-            );
-            securityGroup.addIngressRule(
-                ec2.Peer.ipv4(ip.address),
-                ec2.Port.allIcmp(),
-                `Allow ICMP Ping for ${ip.description}`
-            );
-        });
+        securityGroup.addIngressRule(ec2.Peer.ipv4(vpc.vpcCidrBlock), ec2.Port.tcp(5432), `Allow TCP Traffic for ${vpc.vpcId}`);
+        securityGroup.addIngressRule(ec2.Peer.ipv4(vpc.vpcCidrBlock), ec2.Port.tcp(80), `Allow TCP Traffic for ${vpc.vpcId}`);
+        securityGroup.addIngressRule(ec2.Peer.ipv4(vpc.vpcCidrBlock), ec2.Port.allIcmp(), "Allow all ICMP traffic");
+        securityGroup.addIngressRule(securityGroup, ec2.Port.tcp(5432), `Allow traffic from self on postgres port`);
+        securityGroup.addIngressRule(ec2.Peer.ipv4("10.0.0.0/24"), ec2.Port.tcp(5432), `Allow postgres port for management vpc`);
+        securityGroup.addIngressRule(ec2.Peer.ipv4("10.0.0.0/24"), ec2.Port.tcp(80), `Allow TCP Traffic for management vpc`);
+        securityGroup.addIngressRule(ec2.Peer.ipv4("10.0.0.0/24"), ec2.Port.allIcmp(), `Allow ICMP Ping for management vpc`);
+
+
 
         // =============================================
         // EFS Storage Configuration
@@ -296,23 +287,34 @@ export class PostgresStack extends cdk.Stack {
                 POSTGRES_USER: "postgres",
                 POSTGRES_PASSWORD: "R8D6Fy3csyg",
                 POSTGRES_DB: "postgres",
-                PGDATA: "/var/lib/postgresql/data/pgdata"
+                PGDATA: "/var/lib/postgresql/data/pgdata",
+                POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256",
+                POSTGRES_HOST_AUTH_METHOD: "scram-sha-256"
             },
+            linuxParameters: new ecs.LinuxParameters(this, `${prefix}-linux-parameters`, {
+                initProcessEnabled: true
+            }),
             logging: new ecs.AwsLogDriver({
                 streamPrefix: "ecs",
                 logGroup: logGroup,
                 multilinePattern: "^(INFO|DEBUG|WARN|ERROR|CRITICAL)",
             }),
             healthCheck: {
-                command: ["CMD-SHELL", "pg_isready -U postgres"],
+                command: [
+                    "CMD-SHELL",
+                    "pg_isready -U postgres || exit 1"
+                ],
                 interval: cdk.Duration.seconds(30),
                 timeout: cdk.Duration.seconds(5),
                 retries: 3,
                 startPeriod: cdk.Duration.seconds(60),
             },
             portMappings: [{
+                name: "postgresql",
+                hostPort: 5432,
                 containerPort: 5432,
                 protocol: ecs.Protocol.TCP,
+                //appProtocol: ecs.AppProtocol.,
             }],
         });
 
@@ -323,11 +325,19 @@ export class PostgresStack extends cdk.Stack {
             sourceVolume: ecsEFSVolume.name,
         });
 
+        // Add ulimits for optimal PostgreSQL performance
         container.addUlimits({
             name: ecs.UlimitName.NOFILE,
             softLimit: 65536,
             hardLimit: 65536
         });
+
+        container.addUlimits({
+            name: ecs.UlimitName.NPROC,
+            softLimit: 65536,
+            hardLimit: 65536
+        });
+
 
         // =============================================
         // Fargate Service Configuration
@@ -416,21 +426,21 @@ export class PostgresStack extends cdk.Stack {
         // =============================================
         // Load Balancer Configuration
         // =============================================
-        const networkLoadBalancer = new elbv2.NetworkLoadBalancer(this, `${prefix}-network-load-balancer`, {
+        const networkLoadBalancer = new elbv2.NetworkLoadBalancer(this, `${prefix}-nlb`, {
             vpc: vpc,
-            internetFacing: true,
+            internetFacing: false,
             vpcSubnets: {
                 subnets: vpc.privateSubnets,
                 availabilityZones: vpc.availabilityZones,
             },
-            loadBalancerName: `${prefix}`,
+            loadBalancerName: `${prefix}-nlb`,
             securityGroups: [securityGroup],
         });
 
-        cdk.Tags.of(networkLoadBalancer).add("Name", `${prefix}`);
+        cdk.Tags.of(networkLoadBalancer).add("Name", `${prefix}-nlb`);
 
-        const targetGroup = new elbv2.NetworkTargetGroup(this, `${prefix}-network-load-balancer-tg`, {
-            targetGroupName: `${prefix}`,
+        const targetGroup = new elbv2.NetworkTargetGroup(this, `${prefix}-nlb-tg`, {
+            targetGroupName: `${prefix}-nlb-tg`,
             targets: [service],
             protocol: elbv2.Protocol.TCP,
             port: 5432,
@@ -445,38 +455,43 @@ export class PostgresStack extends cdk.Stack {
             },
         });
 
-        const listener = networkLoadBalancer.addListener(`${prefix}-network-load-balancer-listener`, {
+        const listener = networkLoadBalancer.addListener(`${prefix}-nlb-listener`, {
             port: 5432,
             defaultTargetGroups: [targetGroup]
-        });
-
-        // =============================================
-        // Export NLB DNS Name
-        // =============================================
-        new cdk.CfnOutput(this, `${prefix}-nlb-dns-name`, {
-            value: networkLoadBalancer.loadBalancerDnsName,
-            description: "The DNS name for the Network Load Balancer",
-            exportName: `${prefix}-nlb-dns-name`,
         });
 
         // =============================================
         // DNS Configuration
         // =============================================
 
-        const hostedZone = route53.HostedZone.fromHostedZoneAttributes(this, `${prefix}-importing-hosted-zone`,
-            {
-                zoneName: `${props.project}.internal`,
-                hostedZoneId: cdk.Fn.importValue(`${props.environment}-${props.project}-internal-zone-id`)
-            }
-        );
+        const hostedZone = route53.HostedZone.fromLookup(this, `${prefix}-importing-hosted-zone`, {
+            domainName: `${props.environment}.${props.domain}`, //e.g. example.com
+        });
 
         new route53.CnameRecord(this, `${prefix}-route53-cname-record`, {
             domainName: networkLoadBalancer.loadBalancerDnsName,
             zone: hostedZone,
             comment: `Create the CNAME record for ${prefix} in ${props.project}.internal`,
-            recordName: `${props.service}.${props.project}.internal`,
+            recordName: `${props.service}.${props.environment}.${props.domain}`,
             ttl: cdk.Duration.minutes(30),
         });
+
+        /*  const hostedZone = route53.HostedZone.fromHostedZoneAttributes(this, `${prefix}-importing-hosted-zone`,
+             {
+                 zoneName: `${props.project}.internal`,
+                 hostedZoneId: cdk.Fn.importValue(`${props.environment}-${props.project}-internal-zone-id`)
+             }
+         );
+ 
+         new route53.CnameRecord(this, `${prefix}-route53-cname-record`, {
+             domainName: networkLoadBalancer.loadBalancerDnsName,
+             zone: hostedZone,
+             comment: `Create the CNAME record for ${prefix} in ${props.project}.internal`,
+             recordName: `${props.service}.${props.project}.internal`,
+             ttl: cdk.Duration.minutes(30),
+         }); */
+
+
 
     }
 }

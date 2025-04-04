@@ -15,10 +15,7 @@ export interface MainStackProps extends cdk.StackProps {
   readonly vpcId: string;
   readonly domain: string;
   readonly imageTag: string;
-  readonly certificate?: string;
   readonly whitelist?: Array<{ address: string; description: string }>;
-  readonly loadBalancerDns?: string;
-  readonly nlbLoadBalancerDns?: string;
 }
 export class MainStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: MainStackProps) {
@@ -44,7 +41,6 @@ export class MainStack extends cdk.Stack {
       domain: props.domain,
       vpcId: props.vpcId,
       whitelist: props.whitelist,
-      certificate: `${props.certificate}`,
       env: { account: this.account, region: this.region },
       tags: {
         Environment: props.environment,
@@ -64,7 +60,7 @@ export class MainStack extends cdk.Stack {
               stackName: `${props.environment}-${props.project}-${service.name}-cdk`,
               environment: props.environment,
               project: props.project,
-              nlbLoadBalancerDns: props.nlbLoadBalancerDns,
+              domain: props.domain,
               hostHeader: service.properties[props.environment].hostHeader,
               service: service.name,
               memoryLimitMiB: service.properties[props.environment].memoryLimitMiB,
@@ -95,8 +91,6 @@ export class MainStack extends cdk.Stack {
               targetGroupPriority: service.properties[props.environment].priority,
               imageTag: props.imageTag,
               domain: props.domain,
-              loadBalancerDns: props.loadBalancerDns,
-              certificate: props.certificate,
               hostHeader: service.properties[props.environment].hostHeader,
               github: service.github!,
               vpcId: props.vpcId,
@@ -127,8 +121,6 @@ export class MainStack extends cdk.Stack {
               targetGroupPriority: service.properties[props.environment].priority,
               imageTag: props.imageTag,
               domain: props.domain,
-              loadBalancerDns: props.loadBalancerDns,
-              certificate: props.certificate,
               hostHeader: service.properties[props.environment].hostHeader,
               github: service.github!,
               vpcId: props.vpcId,

@@ -34,7 +34,7 @@ export const services: Service[] = [
       dev: { hostHeader: "query.dev.ov3r.tech", priority: 3, memoryLimitMiB: 1024, cpu: 512, desiredCount: 1 },
       prod: { hostHeader: "query.ov3r.tech", priority: 3, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
     },
-    healthCheck: "/healthCheck",
+    healthCheck: "/healthcheck",
     secrets: [
       "PGHOST",
       "PGPORT",
@@ -45,6 +45,7 @@ export const services: Service[] = [
       "OPEN_AI_MODEL_NAME",
       "REDIS_CACHE_HOST_ENDPOINT",
       "DEFAULT_CACHE_TTL",
+      "SUPABASE_DATABASE_URL"
     ],
   },
 
@@ -57,7 +58,7 @@ export const services: Service[] = [
       dev: { hostHeader: "console.dev.ov3r.tech", priority: 1, memoryLimitMiB: 1024, cpu: 512, desiredCount: 1 },
       prod: { hostHeader: "console.ov3r.tech", priority: 1, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
     },
-    healthCheck: "/healthCheck",
+    healthCheck: "/healthcheck",
     secrets: [
       "NEXT_PUBLIC_QUERY_API_URL",
       "NEXT_PUBLIC_OPENAI_API_KEY",

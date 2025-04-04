@@ -15,7 +15,6 @@ import * as destinations from "aws-cdk-lib/aws-logs-destinations";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as elasticache from "aws-cdk-lib/aws-elasticache";
 import * as s3 from "aws-cdk-lib/aws-s3";
-import { Route53CreateCNAMEStack } from "../shared/index";
 import * as ssm from "aws-cdk-lib/aws-ssm";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
@@ -39,10 +38,8 @@ export interface FargateStackStackProps extends cdk.StackProps {
   readonly github: string;
   readonly memoryLimitMiB: number;
   readonly cpu: number;
-  readonly certificate?: string;
   readonly targetGroupPriority?: number;
   readonly microService?: boolean;
-  readonly loadBalancerDns?: string;
   readonly hostHeader: string;
   readonly containerPort?: number;
   readonly whitelist?: Array<{ address: string; description: string }>;
@@ -183,10 +180,8 @@ export class FargateStack extends cdk.Stack {
 
     fargateSecurityGroup.addIngressRule(ec2.Peer.ipv4(vpc.vpcCidrBlock), ec2.Port.tcp(80), `Allow TCP Traffic for ${vpc.vpcId}`);
     fargateSecurityGroup.addIngressRule(ec2.Peer.ipv4(vpc.vpcCidrBlock), ec2.Port.allIcmp(), "Allow all ICMP traffic");
-    props.whitelist?.forEach((ip) => {
-      fargateSecurityGroup.addIngressRule(ec2.Peer.ipv4(ip.address), ec2.Port.tcp(80), `Allow TCP Traffic for ${ip.description}`);
-      fargateSecurityGroup.addIngressRule(ec2.Peer.ipv4(ip.address), ec2.Port.allIcmp(), `Allow ICMP Ping for ${ip.description}`);
-    });
+    fargateSecurityGroup.addIngressRule(ec2.Peer.ipv4("10.0.0.0/24"), ec2.Port.tcp(80), `Allow TCP Traffic for management vpc`);
+    fargateSecurityGroup.addIngressRule(ec2.Peer.ipv4("10.0.0.0/24"), ec2.Port.allIcmp(), `Allow ICMP Ping for management vpc`);
 
     const taskDef = new ecs.FargateTaskDefinition(this, `${prefix}-fargate-task-definition`, {
       family: prefix,
@@ -394,47 +389,46 @@ export class FargateStack extends cdk.Stack {
       addStandardTags(HTTPSListener, taggingProps);
     }
 
-    if (props.loadBalancerDns != undefined) {
-      new Route53CreateCNAMEStack(this, `${prefix}-route53-cname-stack`, {
-        stackName: `${prefix}-route53-cname-stack`,
-        env: mgmt,
-        environment: props.environment,
-        service: props.service,
-        project: props.project,
-        value: props.loadBalancerDns,
-        hostedZoneName: `${process.env.DOMAIN}`,
-        recordName: props.hostHeader,
-      });
-    }
+    const hostedZone = route53.HostedZone.fromLookup(this, `${prefix}-importing-hosted-zone`, {
+      domainName: `${props.environment}.${props.domain}`, //e.g. example.com
+    });
+
+    new route53.CnameRecord(this, `${prefix}-route53-cname-record`, {
+      domainName: cdk.Fn.importValue(`${props.environment}-${props.project}-load-balancer-dns`),
+      zone: hostedZone,
+      comment: `Create the CNAME record for ${prefix} in ${props.project}.internal`,
+      recordName: `${props.service}.${props.environment}.${props.domain}`,
+      ttl: cdk.Duration.minutes(30),
+    });
 
     /************************************ CODEPIPELINE STACK ******************************************** */
     /**
      * Adding if condition so that this stack only gets deployed once
      */
 
-    if (this.region === "us-east-1") {
-      const pipelineStack = new PipelineStack(this, `${prefix}-pipeline-cdk`, {
-        stackName: `${prefix}-pipeline-cdk`,
-        env: mgmt,
-        description: `Codepipeline resources for ${props.service}`,
-        terminationProtection: false,
-        project: props.project,
-        vpcId: `${process.env.MGMT_VPC}`, //MGMT VPC
-        service: props.service,
-        secretArn: secrets.secretFullArn!,
-        ecsCluster: props.project,
-        ecsService: service.serviceName,
-        desiredCount: props.desiredCount,
-        roleARN: ecsTaskRole.roleArn,
-        environment: props.environment,
-        github: props.github,
-        ecrURI: `${process.env.CDK_DEFAULT_ACCOUNT}.dkr.ecr.us-east-1.amazonaws.com/${props.project}-${props.service}`, //ecrRepository.repositoryUri,
-        targetBranch: props.imageTag,
-        imageTag: props.imageTag,
-        secretVariables: props.secretVariables,
-      });
 
-      addStandardTags(pipelineStack, taggingProps);
-    }
+    const pipelineStack = new PipelineStack(this, `${prefix}-pipeline-cdk`, {
+      stackName: `${prefix}-pipeline-cdk`,
+      env: mgmt,
+      description: `Codepipeline resources for ${props.service}`,
+      terminationProtection: false,
+      project: props.project,
+      vpcId: `${process.env.MGMT_VPC}`, //MGMT VPC
+      service: props.service,
+      secretArn: secrets.secretFullArn!,
+      ecsCluster: props.project,
+      ecsService: service.serviceName,
+      desiredCount: props.desiredCount,
+      roleARN: ecsTaskRole.roleArn,
+      environment: props.environment,
+      github: props.github,
+      ecrURI: `${process.env.CDK_DEFAULT_ACCOUNT}.dkr.ecr.us-east-1.amazonaws.com/${props.project}-${props.service}`, //ecrRepository.repositoryUri,
+      targetBranch: props.imageTag,
+      imageTag: props.imageTag,
+      secretVariables: props.secretVariables,
+    });
+
+    addStandardTags(pipelineStack, taggingProps);
+
   }
 }

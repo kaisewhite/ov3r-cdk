@@ -98,5 +98,9 @@
   "hosted-zone:account=366394957699:domainName=ov3r.tech:region=us-east-1": {
     "Id": "/hostedzone/Z06897591IYJW002HIP76",
     "Name": "ov3r.tech."
+  },
+  "hosted-zone:account=896502667345:domainName=dev.ov3r.tech:region=us-east-1": {
+    "Id": "/hostedzone/Z009109926CMYH9U3SIWZ",
+    "Name": "dev.ov3r.tech."
   }
 }

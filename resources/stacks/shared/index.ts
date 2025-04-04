@@ -196,8 +196,6 @@ export class SharedServicesStack extends cdk.Stack {
      * CDK IMPORTS
      */
     const vpc = ec2.Vpc.fromLookup(this, `${prefix}-imported-vpc`, { isDefault: false, vpcId: props.vpcId });
-    const importedCertificate = acm.Certificate.fromCertificateArn(this, `${props.environment}-imported-wildcard-certificate-arn`, `${props.certificate}`);
-
     /************************************************** ECS ******************************************************* */
 
     const cluster = new ecs.Cluster(this, `${prefix}-ecs-cluster`, {
@@ -207,6 +205,35 @@ export class SharedServicesStack extends cdk.Stack {
       clusterName: `${props.project}`,
     });
     addStandardTags(cluster, taggingProps);
+
+    /************************************************** Cross Zone Delegation Record ******************************************************* */
+    const subZone = new route53.PublicHostedZone(this, `${prefix}-public-hosted-zone`, {
+      zoneName: `${props.environment}.${props.domain}`,
+    });
+
+    // import the delegation role by constructing the roleArn
+    const delegationRoleArn = cdk.Stack.of(this).formatArn({
+      region: '', // IAM is global in each partition
+      service: 'iam',
+      account: process.env.CDK_DEFAULT_ACCOUNT!,
+      resource: 'role',
+      resourceName: 'AdministratorInboundAccessRole',
+    });
+    const delegationRole = iam.Role.fromRoleArn(this, `${prefix}-delegation-role`, delegationRoleArn);
+
+    // create the record
+    new route53.CrossAccountZoneDelegationRecord(this, `${prefix}-cross-account-zone-delegation-record`, {
+      delegatedZone: subZone,
+      parentHostedZoneName: `${props.domain}`, // or you can use parentHostedZoneId
+      delegationRole,
+    });
+
+    const certificate = new acm.Certificate(this, `${prefix}-certificate`, {
+      domainName: `${props.environment}.${props.domain}`,
+      validation: acm.CertificateValidation.fromDns()
+    });
+
+    certificate.node.addDependency(subZone)
 
     /************************************************** SHARED APPLICATION LOAD BALANCER ******************************************************* */
 
@@ -249,6 +276,12 @@ export class SharedServicesStack extends cdk.Stack {
     });
     addStandardTags(loadBalancer, taggingProps);
 
+    new cdk.CfnOutput(this, `${prefix}-load-balancer-dns`, {
+      value: loadBalancer.loadBalancerDnsName,
+      description: "The DNS for the load balancer",
+      exportName: `${prefix}-load-balancer-dns`,
+    });
+
     loadBalancer.addRedirect({
       sourceProtocol: elbv2.ApplicationProtocol.HTTP,
       sourcePort: 80,
@@ -259,7 +292,7 @@ export class SharedServicesStack extends cdk.Stack {
     const HTTPSListener = loadBalancer.addListener(`${prefix}-https-listener`, {
       port: 443,
       protocol: elbv2.ApplicationProtocol.HTTPS,
-      certificates: [importedCertificate],
+      certificates: [certificate],
       open: true,
     });
     addStandardTags(HTTPSListener, taggingProps);
@@ -299,7 +332,7 @@ export class SharedServicesStack extends cdk.Stack {
   }
 }
 
-export interface Route53StackProps extends cdk.StackProps {
+/* export interface Route53StackProps extends cdk.StackProps {
   readonly environment: string;
   readonly project: string;
   readonly service: string;
@@ -325,4 +358,6 @@ export class Route53CreateCNAMEStack extends cdk.Stack {
       ttl: cdk.Duration.minutes(30),
     });
   }
-}
+} */
+
+
