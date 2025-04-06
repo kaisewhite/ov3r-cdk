@@ -1,5 +1,6 @@
+//import * as cdk from "aws-cdk-lib/core";
 import * as cdk from "aws-cdk-lib";
-import { Construct } from "constructs";
+import { Construct, IConstruct } from "constructs";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as ecr from "aws-cdk-lib/aws-ecr";
@@ -7,12 +8,17 @@ import * as ecs from "aws-cdk-lib/aws-ecs";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import * as elbv2 from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import * as logs from "aws-cdk-lib/aws-logs";
-import { PipelineStack } from "../../pipelines/index";
+import * as route53 from "aws-cdk-lib/aws-route53";
+import { PipelineStack } from "../../../pipelines/index";
+import * as applicationautoscaling from "aws-cdk-lib/aws-applicationautoscaling";
+import * as destinations from "aws-cdk-lib/aws-logs-destinations";
+import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as elasticache from "aws-cdk-lib/aws-elasticache";
 import * as s3 from "aws-cdk-lib/aws-s3";
+import * as ssm from "aws-cdk-lib/aws-ssm";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
-import { addStandardTags } from "../../../helpers/tag_resources";
-import * as route53 from "aws-cdk-lib/aws-route53";
+import { addStandardTags } from "../../../../helpers/tag_resources";
 import * as kms from "aws-cdk-lib/aws-kms";
 
 const mgmt = { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION };
@@ -22,6 +28,7 @@ export interface FargateStackStackProps extends cdk.StackProps {
   //
   readonly project: string;
   readonly service: string;
+  readonly type: string;
   readonly internetFacing: boolean;
   readonly healthCheck: string;
   readonly imageTag: string;
@@ -34,8 +41,7 @@ export interface FargateStackStackProps extends cdk.StackProps {
   readonly cpu: number;
   readonly targetGroupPriority?: number;
   readonly microService?: boolean;
-  readonly loadBalancerDns?: string;
-  readonly hostHeader: string;
+  readonly subdomain: string;
   readonly containerPort?: number;
   readonly whitelist?: Array<{ address: string; description: string }>;
 }
@@ -63,9 +69,9 @@ export class FargateStack extends cdk.Stack {
     addStandardTags(this, taggingProps);
 
     /**
-        * KMS Encryption Configuration
-        * Sets up encryption key for sensitive data
-        */
+       * KMS Encryption Configuration
+       * Sets up encryption key for sensitive data
+       */
     const kmsKey = new kms.Key(this, `${prefix}-rds-kms-key`, {
       description: `KMS key for ${prefix}`,
       enableKeyRotation: true,
@@ -112,22 +118,11 @@ export class FargateStack extends cdk.Stack {
 
     /**************************************************************************************** */
 
-    const documentStorageBucket = new s3.Bucket(this, `${prefix}-document-storage`, {
-      bucketName: `${prefix}-document-storage`,
-      versioned: false,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      autoDeleteObjects: true,
-      objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
-      accessControl: s3.BucketAccessControl.BUCKET_OWNER_FULL_CONTROL,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ACLS,
-      publicReadAccess: true,
-    });
-    addStandardTags(documentStorageBucket, taggingProps);
 
     /**
-        * IAM Role and Permissions Configuration
-        * Sets up IAM roles and policies for ECS task execution
-        */
+           * IAM Role and Permissions Configuration
+           * Sets up IAM roles and policies for ECS task execution
+           */
     const ecsTaskRole = new iam.Role(this, `${prefix}-ecs-task-role`, {
       assumedBy: new iam.CompositePrincipal(
         new iam.AccountPrincipal(`${process.env.CDK_DEFAULT_ACCOUNT}`),
@@ -179,55 +174,6 @@ export class FargateStack extends cdk.Stack {
           "ecr:BatchGetImage",
           "ecr:BatchCheckLayerAvailability",
           "ecs:UpdateService", "ecs:DescribeServices", "ecs:WaitUntilServiceStable"
-        ],
-      })
-    );
-    ecrRepository.grantPullPush(new iam.ArnPrincipal(ecsTaskRole.roleArn));
-    documentStorageBucket.grantReadWrite(ecsTaskRole);
-
-    /**
-     * This permission is needed so the ecs task can pull the image from the mgmt account
-     */
-    ecsTaskRole.addToPrincipalPolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        resources: [`arn:aws:iam::${process.env.CDK_DEFAULT_ACCOUNT}:role/*`],
-        actions: ["sts:AssumeRole"],
-      })
-    );
-
-    ecsTaskRole.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName("service-role/AmazonECSTaskExecutionRolePolicy"));
-
-    ecsTaskRole.addToPrincipalPolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        resources: ["*"],
-        actions: [
-          "logs:*",
-          "s3:*",
-          "kms:*",
-          "ecr:GetDownloadUrlForLayer",
-          "ecr:BatchGetImage",
-          "ecr:BatchCheckLayerAvailability",
-          "ecr:PutImage",
-          "ecr:InitiateLayerUpload",
-          "ecr:UploadLayerPart",
-          "ecr:CompleteLayerUpload",
-          "ec2:*",
-          "rds:*",
-          "ecs:*",
-          "secretsmanager:*",
-          "rekognition:*",
-          "sqs:sendmessage",
-          "sqs:ReceiveMessage",
-          "sqs:DeleteMessage",
-          "sqs:GetQueueAttributes",
-          "ses:SendEmail",
-          "sns:CreatePlatformEndpoint",
-          "sns:SetEndpointAttributes",
-          "sns:Publish",
-          "sns:ListEndpointsByPlatformApplication",
-          "sns:DeleteEndpoint",
         ],
       })
     );
@@ -290,12 +236,9 @@ export class FargateStack extends cdk.Stack {
       ],
       secrets: generateSecrets(props.secretVariables),
       environment: {
-        REGION: this.region,
+
         PORT: `80`,
-        HOST_HEADER: props.hostHeader,
-        //NODE_ENV: props.environment === "prod" ? "production" : "development",
-        //NEXT_PUBLIC_APP_ENV: props.environment === "prod" ? "production" : "development",
-        S3_BUCKET_NAME: documentStorageBucket.bucketName,
+
       },
     });
 
@@ -366,7 +309,7 @@ export class FargateStack extends cdk.Stack {
     const startRule = new events.Rule(this, `${prefix}-start-ecs-service-rule`, {
       schedule: events.Schedule.cron({
         minute: "0",
-        hour: "14",
+        hour: "14", // 10:00 UTC = 05:00 EST
         month: "*",
         day: "*",
       }),
@@ -396,7 +339,7 @@ export class FargateStack extends cdk.Stack {
     const stopRule = new events.Rule(this, `${prefix}-stop-ecs-service-rule`, {
       schedule: events.Schedule.cron({
         minute: "0",
-        hour: "2", // 04:00 UTC = 23:00 EST (previous day)
+        hour: "2", // 04:00 UTC = 10:00 EST (previous day)
         month: "*",
         day: "*",
       }),
@@ -423,58 +366,57 @@ export class FargateStack extends cdk.Stack {
 
     /***************************** TARGET GROUP *****************************/
 
-    if (props.hostHeader != undefined) {
-      const targetGroup = new elbv2.ApplicationTargetGroup(this, `${prefix}-target-group`, {
-        port: 80,
-        vpc: vpc,
-        protocol: elbv2.ApplicationProtocol.HTTP,
-        healthCheck: {
-          interval: cdk.Duration.seconds(15),
-          path: props.healthCheck,
-          healthyHttpCodes: "200",
-          timeout: cdk.Duration.seconds(10),
-          unhealthyThresholdCount: 5,
-          healthyThresholdCount: 2,
-        },
-        targetGroupName: `${prefix}`,
-        targets: [service],
-        deregistrationDelay: cdk.Duration.seconds(10),
-      });
-      //Import HTTPS Listener from ./shared
-      const HTTPSListener = elbv2.ApplicationListener.fromApplicationListenerAttributes(this, `${prefix}-https-listener`, {
-        listenerArn: cdk.Fn.importValue(`${props.environment}-${props.project}-https-listener-arn`),
-        securityGroup: ec2.SecurityGroup.fromSecurityGroupId(
-          this,
-          `imported-${prefix}-load-balancer-sg-id`,
-          cdk.Fn.importValue(`${props.environment}-${props.project}-load-balancer-sg-id`),
-          {
-            allowAllOutbound: true,
-            mutable: true,
-          }
-        ),
-      });
 
-      //Setup Listener Action
-      HTTPSListener.addAction(`${prefix}-https-listener-action`, {
-        priority: props.targetGroupPriority,
-        conditions: [elbv2.ListenerCondition.hostHeaders([props.hostHeader])],
-        action: elbv2.ListenerAction.forward([targetGroup]),
-      });
-
-      addStandardTags(targetGroup, taggingProps);
-      addStandardTags(HTTPSListener, taggingProps);
-    }
-
-
-    const hostedZone = route53.HostedZone.fromLookup(this, `${prefix}-importing-hosted-zone`, {
-      domainName: `${props.environment}.${props.domain}`, //e.g. example.com
+    const targetGroup = new elbv2.ApplicationTargetGroup(this, `${prefix}-target-group`, {
+      port: 80,
+      vpc: vpc,
+      protocol: elbv2.ApplicationProtocol.HTTP,
+      healthCheck: {
+        interval: cdk.Duration.seconds(15),
+        path: props.healthCheck,
+        healthyHttpCodes: "200",
+        timeout: cdk.Duration.seconds(10),
+        unhealthyThresholdCount: 5,
+        healthyThresholdCount: 2,
+      },
+      targetGroupName: `${prefix}`,
+      targets: [service],
+      deregistrationDelay: cdk.Duration.seconds(10),
+    });
+    //Import HTTPS Listener from ./shared
+    const HTTPSListener = elbv2.ApplicationListener.fromApplicationListenerAttributes(this, `${prefix}-https-listener`, {
+      listenerArn: cdk.Fn.importValue(`${props.environment}-${props.project}-https-listener-arn`),
+      securityGroup: ec2.SecurityGroup.fromSecurityGroupId(
+        this,
+        `imported-${prefix}-load-balancer-sg-id`,
+        cdk.Fn.importValue(`${props.environment}-${props.project}-load-balancer-sg-id`),
+        {
+          allowAllOutbound: true,
+          mutable: true,
+        }
+      ),
     });
 
+    //Setup Listener Action
+    HTTPSListener.addAction(`${prefix}-https-listener-action`, {
+      priority: props.targetGroupPriority,
+      conditions: [elbv2.ListenerCondition.hostHeaders([`${props.subdomain}.${props.environment}.${props.domain}`])],
+      action: elbv2.ListenerAction.forward([targetGroup]),
+    });
+
+    addStandardTags(targetGroup, taggingProps);
+    addStandardTags(HTTPSListener, taggingProps);
+
+
+    const hostedZone = route53.HostedZone.fromHostedZoneAttributes(this, `${prefix}-imported-hosted-zone`, {
+      hostedZoneId: cdk.Fn.importValue(`${props.environment}-${props.project}-hosted-zone-id`),
+      zoneName: `${props.environment}.${props.domain}`
+    });
     new route53.CnameRecord(this, `${prefix}-route53-cname-record`, {
       domainName: cdk.Fn.importValue(`${props.environment}-${props.project}-load-balancer-dns`),
       zone: hostedZone,
       comment: `Create the CNAME record for ${prefix} in ${props.project}.internal`,
-      recordName: `${props.service}.${props.environment}.${props.domain}`,
+      recordName: props.environment === 'prod' ? `${props.subdomain}.${props.domain}` : `${props.subdomain}.${props.environment}.${props.domain}`,
       ttl: cdk.Duration.minutes(30),
     });
 
@@ -483,12 +425,14 @@ export class FargateStack extends cdk.Stack {
      * Adding if condition so that this stack only gets deployed once
      */
 
+
     const pipelineStack = new PipelineStack(this, `${prefix}-pipeline-cdk`, {
       stackName: `${prefix}-pipeline-cdk`,
       env: mgmt,
       description: `Codepipeline resources for ${props.service}`,
       terminationProtection: false,
       project: props.project,
+      type: props.type,
       vpcId: `${process.env.MGMT_VPC}`, //MGMT VPC
       service: props.service,
       secretArn: secrets.secretFullArn!,
@@ -505,5 +449,6 @@ export class FargateStack extends cdk.Stack {
     });
 
     addStandardTags(pipelineStack, taggingProps);
+
   }
 }

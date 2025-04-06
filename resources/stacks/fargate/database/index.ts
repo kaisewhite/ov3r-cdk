@@ -4,7 +4,7 @@ import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as ecs from "aws-cdk-lib/aws-ecs";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
-import { addStandardTags } from "../../../helpers/tag_resources";
+import { addStandardTags } from "../../../../helpers/tag_resources";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as efs from "aws-cdk-lib/aws-efs";
 import * as logs from "aws-cdk-lib/aws-logs";
@@ -22,7 +22,7 @@ export interface PostgresStackProps extends cdk.StackProps {
     readonly service: string;
     readonly environment: string;
     readonly domain: string;
-    readonly hostHeader: string;
+    readonly subdomain: string;
     readonly vpcId: string;
     readonly memoryLimitMiB: number;
     readonly cpu: number;
@@ -200,30 +200,30 @@ export class PostgresStack extends cdk.Stack {
         // =============================================
         // Backup Configuration
         // =============================================
-        const backupVault = new backup.BackupVault(this, `${prefix}-backup-vault`, {
-            backupVaultName: `${prefix}-vault`,
-            removalPolicy: cdk.RemovalPolicy.DESTROY,
-        });
-
-        const backupPlan = new backup.BackupPlan(this, `${prefix}-backup-plan`, {
-            backupPlanName: `${prefix}-plan`,
-            backupVault: backupVault,
-        });
-
-        // Configure daily backups
-        backupPlan.addRule(
-            new backup.BackupPlanRule({
-                ruleName: "DailyBackup",
-                scheduleExpression: cdk.aws_events.Schedule.cron({ hour: "2", minute: "0" }),
-                deleteAfter: cdk.Duration.days(2),
-            })
-        );
-
-        backupPlan.addSelection(`${prefix}-efs-selection`, {
-            resources: [
-                backup.BackupResource.fromArn(fileSystem.fileSystemArn),
-            ],
-        });
+        /*  const backupVault = new backup.BackupVault(this, `${prefix}-backup-vault`, {
+             backupVaultName: `${prefix}-vault`,
+             removalPolicy: cdk.RemovalPolicy.DESTROY,
+         });
+ 
+         const backupPlan = new backup.BackupPlan(this, `${prefix}-backup-plan`, {
+             backupPlanName: `${prefix}-plan`,
+             backupVault: backupVault,
+         });
+ 
+         // Configure daily backups
+         backupPlan.addRule(
+             new backup.BackupPlanRule({
+                 ruleName: "DailyBackup",
+                 scheduleExpression: cdk.aws_events.Schedule.cron({ hour: "2", minute: "0" }),
+                 deleteAfter: cdk.Duration.days(2),
+             })
+         );
+ 
+         backupPlan.addSelection(`${prefix}-efs-selection`, {
+             resources: [
+                 backup.BackupResource.fromArn(fileSystem.fileSystemArn),
+             ],
+         }); */
 
         // =============================================
         // EFS Access Point Configuration
@@ -464,15 +464,15 @@ export class PostgresStack extends cdk.Stack {
         // DNS Configuration
         // =============================================
 
-        const hostedZone = route53.HostedZone.fromLookup(this, `${prefix}-importing-hosted-zone`, {
-            domainName: `${props.environment}.${props.domain}`, //e.g. example.com
+        const hostedZone = route53.HostedZone.fromHostedZoneAttributes(this, `${prefix}-imported-hosted-zone`, {
+            hostedZoneId: cdk.Fn.importValue(`${props.environment}-${props.project}-hosted-zone-id`),
+            zoneName: `${props.environment}.${props.domain}`
         });
-
         new route53.CnameRecord(this, `${prefix}-route53-cname-record`, {
             domainName: networkLoadBalancer.loadBalancerDnsName,
             zone: hostedZone,
-            comment: `Create the CNAME record for ${prefix} in ${props.project}.internal`,
-            recordName: `${props.service}.${props.environment}.${props.domain}`,
+            comment: `Create the CNAME record for ${prefix} in ${props.project}`,
+            recordName: `${props.subdomain}.${props.environment}.${props.domain}`,
             ttl: cdk.Duration.minutes(30),
         });
 

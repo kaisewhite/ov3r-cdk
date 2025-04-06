@@ -9,51 +9,41 @@ import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as chatbot from "aws-cdk-lib/aws-chatbot";
 import * as route53 from "aws-cdk-lib/aws-route53";
-import { services } from "../../../properties";
+import { Service } from "../../../properties";
 import { addStandardTags } from "../../../helpers/tag_resources";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 
-export interface MGMTStackProps extends cdk.StackProps {
+export interface DevOpsStackProps extends cdk.StackProps {
   readonly project: string;
   readonly slackWorkspaceId: string; //The WorkspaceID which can be found in AWS Chatbot Console
   readonly pipelineSlackChannelId: string; //The Slack Workspace ID which is found in Slack->Channel -> View Channel Details -> About
+  readonly services: Service[];
 }
-export class MGMTStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props: MGMTStackProps) {
+export class DevOpsStack extends cdk.Stack {
+  constructor(scope: Construct, id: string, props: DevOpsStackProps) {
     super(scope, id, props);
 
     // Create tagging props for the management stack
     const taggingProps = {
       project: props.project,
-      service: "mgmt",
-      environment: "shared", // MGMTStack is typically a shared resource
+      service: "devops",
+      environment: "shared", // DevOpsStack is typically a shared resource
       customTags: {
-        Stack: "mgmt",
-        ResourceType: "management",
+        Stack: "devops",
+        ResourceType: "devops",
       },
     };
 
     // Add tags to the stack itself
     addStandardTags(this, taggingProps);
 
-    const secrets = new secretsmanager.Secret(this, `${props.project}-secret`, {
-      secretName: `${props.project}-pipeline-environment-variables`,
-      secretObjectValue: {
-        NEXT_PUBLIC_DATABASE_URL: cdk.SecretValue.unsafePlainText(""),
-        PUBLICA_API_TOKEN: cdk.SecretValue.unsafePlainText(""),
-        API_KEY: cdk.SecretValue.unsafePlainText(""),
-        NEXT_PUBLIC_OPENAI_API_KEY: cdk.SecretValue.unsafePlainText(""),
-      },
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      description: `Environment Variables for ${props.project} pipelines and services`,
-    });
-    addStandardTags(secrets, taggingProps);
+
 
     /************************************* ECR Resources ****************************/
 
-    services.forEach((service) => {
-      switch (service.type) {
-        case "fargate":
+    props.services.forEach((service) => {
+      switch (service.ecrRepositoryRequired) {
+        case true:
           const repository = new ecr.Repository(this, `${props.project}-${service.name}-repository`, {
             repositoryName: `${props.project}-${service.name}`,
             imageScanOnPush: true,
@@ -128,6 +118,7 @@ export class MGMTStack extends cdk.Stack {
       displayName: `${props.project}-codepipeline`,
       topicName: `${props.project}-codepipeline`,
     });
+    codePipelineSnsTopic.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
     addStandardTags(codePipelineSnsTopic, {
       ...taggingProps,
       customTags: {
@@ -211,6 +202,12 @@ export class SharedServicesStack extends cdk.Stack {
       zoneName: `${props.environment}.${props.domain}`,
     });
 
+    new cdk.CfnOutput(this, `${prefix}-hosted-zone-id`, {
+      value: subZone.hostedZoneId,
+      exportName: `${prefix}-hosted-zone-id`,
+      description: "The ID of the public hosted zone"
+    });
+
     // import the delegation role by constructing the roleArn
     const delegationRoleArn = cdk.Stack.of(this).formatArn({
       region: '', // IAM is global in each partition
@@ -230,7 +227,8 @@ export class SharedServicesStack extends cdk.Stack {
 
     const certificate = new acm.Certificate(this, `${prefix}-certificate`, {
       domainName: `${props.environment}.${props.domain}`,
-      validation: acm.CertificateValidation.fromDns()
+      validation: acm.CertificateValidation.fromDns(),
+      subjectAlternativeNames: [`*.${props.environment}.${props.domain}`],
     });
 
     certificate.node.addDependency(subZone)
@@ -318,17 +316,17 @@ export class SharedServicesStack extends cdk.Stack {
 
     /*************** Internal DNS ***************/
 
-    const internalZone = new route53.PrivateHostedZone(this, `${prefix}-internal-zone`, {
-      zoneName: `${props.project}.internal`,
-      vpc: vpc,
-    });
-    addStandardTags(internalZone, taggingProps);
-
-    new cdk.CfnOutput(this, `${prefix}-internal-zone-id`, {
-      value: internalZone.hostedZoneId,
-      description: "The ID for the internal zone",
-      exportName: `${prefix}-internal-zone-id`,
-    });
+    /*  const internalZone = new route53.PrivateHostedZone(this, `${prefix}-internal-zone`, {
+       zoneName: `${props.project}.internal`,
+       vpc: vpc,
+     });
+     addStandardTags(internalZone, taggingProps);
+ 
+     new cdk.CfnOutput(this, `${prefix}-internal-zone-id`, {
+       value: internalZone.hostedZoneId,
+       description: "The ID for the internal zone",
+       exportName: `${prefix}-internal-zone-id`,
+     }); */
   }
 }
 
@@ -359,5 +357,3 @@ export class Route53CreateCNAMEStack extends cdk.Stack {
     });
   }
 } */
-
-

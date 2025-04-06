@@ -22,7 +22,8 @@ import { dockerBuildSpec, ecsDeploymentBuildSpec, NextJSDockerBuildSpec } from "
 
 export interface PipelineStackProps extends cdk.StackProps {
   readonly project: string;
-  readonly service: string;
+  readonly service: string
+  readonly type: string;
   readonly environment: string;
   readonly targetBranch: string;
   readonly imageTag: string;
@@ -116,7 +117,7 @@ export class PipelineStack extends cdk.Stack {
       return environmentVariables;
     };
 
-    const buildSpec = props.service.includes("web")
+    const buildSpec = props.type === "platform"
       ? NextJSDockerBuildSpec({ imageTag: props.imageTag, ecrURI: props.ecrURI, region: this.region, secretVariables: props.secretVariables! })
       : dockerBuildSpec({ imageTag: props.imageTag, ecrURI: props.ecrURI, region: this.region });
 
@@ -134,7 +135,7 @@ export class PipelineStack extends cdk.Stack {
         computeType: codebuild.ComputeType.SMALL,
         buildImage: codebuild.LinuxBuildImage.STANDARD_7_0,
         privileged: true,
-        environmentVariables: props.service.includes("web") ? generateSecrets(props.secretVariables) : undefined,
+        environmentVariables: props.type === "platform" ? generateSecrets(props.secretVariables) : undefined,
       },
       logging: {
         cloudWatch: {
@@ -155,10 +156,10 @@ export class PipelineStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-    const deploy01 = new codebuild.Project(this, `${prefix}-codebuild-deploy-project-01`, {
+    const deploy = new codebuild.Project(this, `${prefix}-codebuild-deploy-project-`, {
       source: gitHubSource,
       role: role,
-      projectName: `${prefix}-deploy-01`,
+      projectName: `${prefix}-deploy-`,
       description: `Deployment Project for: ${prefix} us-east-1`,
       buildSpec: ecsDeploymentBuildSpec({
         cluster: props.ecsCluster,
@@ -177,26 +178,26 @@ export class PipelineStack extends cdk.Stack {
       badge: false,
     });
 
-    const deploy02 = new codebuild.Project(this, `${prefix}-codebuild-deploy-project-02`, {
-      source: gitHubSource,
-      projectName: `${prefix}-deploy-02`,
-      description: `Deployment Project for: ${prefix} us-east-1`,
-      buildSpec: ecsDeploymentBuildSpec({
-        cluster: props.ecsCluster,
-        service: props.ecsService,
-        roleARN: props.roleARN,
-        desiredCount: props.desiredCount,
-        region: "us-west-1",
-      }),
-      environment: { computeType: codebuild.ComputeType.SMALL, buildImage: codebuild.LinuxBuildImage.STANDARD_7_0, privileged: true },
-      logging: {
-        cloudWatch: {
-          logGroup: deploymentLogGroup,
-        },
-      },
-      timeout: cdk.Duration.minutes(15),
-      badge: false,
-    });
+    /*     const deploy02 = new codebuild.Project(this, `${prefix}-codebuild-deploy-project-02`, {
+          source: gitHubSource,
+          projectName: `${prefix}-deploy-02`,
+          description: `Deployment Project for: ${prefix} us-east-1`,
+          buildSpec: ecsDeploymentBuildSpec({
+            cluster: props.ecsCluster,
+            service: props.ecsService,
+            roleARN: props.roleARN,
+            desiredCount: props.desiredCount,
+            region: "us-west-1",
+          }),
+          environment: { computeType: codebuild.ComputeType.SMALL, buildImage: codebuild.LinuxBuildImage.STANDARD_7_0, privileged: true },
+          logging: {
+            cloudWatch: {
+              logGroup: deploymentLogGroup,
+            },
+          },
+          timeout: cdk.Duration.minutes(15),
+          badge: false,
+        }); */
 
     const sourceAction = new codepipeline_actions.CodeStarConnectionsSourceAction({
       actionName: "github",
@@ -224,7 +225,7 @@ export class PipelineStack extends cdk.Stack {
     const deployAction01 = new codepipeline_actions.CodeBuildAction({
       actionName: "us-east-1",
       role: role,
-      project: deploy01,
+      project: deploy,
       input: sourceArtifact,
       type: codepipeline_actions.CodeBuildActionType.BUILD,
     });
@@ -257,43 +258,43 @@ export class PipelineStack extends cdk.Stack {
       cdk.Fn.importValue(`${props.project}-codepipeline-sns-topic-arn`)
     );
     //https://docs.aws.amazon.com/dtconsole/latest/userguide/concepts.html#events-ref-pipeline
-    const codePipelineRule = new codestarnotifications.NotificationRule(this, `${prefix}-codepipeline-notifications-rule`, {
-      source: pipeline, //build,
-      events: [
-        "codepipeline-pipeline-manual-approval-needed",
-        "codepipeline-pipeline-pipeline-execution-failed",
-        "codepipeline-pipeline-action-execution-failed",
-        "codepipeline-pipeline-stage-execution-failed",
-        "codepipeline-pipeline-pipeline-execution-started",
-      ],
-      targets: [SNSTopic],
-      enabled: true,
-      detailType: codestarnotifications.DetailType.FULL,
-      notificationRuleName: `${prefix}-codepipeline`,
-    });
-
-    SNSTopic.grantPublish(new iam.ArnPrincipal(codePipelineRule.notificationRuleArn));
-
-    const codebuildRule = new codestarnotifications.NotificationRule(this, `${prefix}-codebuild-notifications-rule`, {
-      source: build,
-      events: ["codebuild-project-build-state-failed"],
-      targets: [SNSTopic],
-      enabled: true,
-      detailType: codestarnotifications.DetailType.BASIC,
-      notificationRuleName: `${prefix}-codebuild`,
-    });
-
-    SNSTopic.grantPublish(new iam.ArnPrincipal(codebuildRule.notificationRuleArn));
-
-    const codeDeployRule01 = new codestarnotifications.NotificationRule(this, `${prefix}-codedeploy-notifications-rule`, {
-      source: deploy01,
-      events: ["codebuild-project-build-state-failed"],
-      targets: [SNSTopic],
-      enabled: true,
-      detailType: codestarnotifications.DetailType.BASIC,
-      notificationRuleName: `${prefix}-codedeploy`,
-    });
-    SNSTopic.grantPublish(new iam.ArnPrincipal(codeDeployRule01.notificationRuleArn));
+    /*  const codePipelineRule = new codestarnotifications.NotificationRule(this, `${prefix}-codepipeline-notifications-rule`, {
+       source: pipeline, //build,
+       events: [
+         "codepipeline-pipeline-manual-approval-needed",
+         "codepipeline-pipeline-pipeline-execution-failed",
+         "codepipeline-pipeline-action-execution-failed",
+         "codepipeline-pipeline-stage-execution-failed",
+         "codepipeline-pipeline-pipeline-execution-started",
+       ],
+       targets: [SNSTopic],
+       enabled: true,
+       detailType: codestarnotifications.DetailType.FULL,
+       notificationRuleName: `${prefix}-codepipeline`,
+     });
+ 
+     SNSTopic.grantPublish(new iam.ArnPrincipal(codePipelineRule.notificationRuleArn));
+ 
+     const codebuildRule = new codestarnotifications.NotificationRule(this, `${prefix}-codebuild-notifications-rule`, {
+       source: build,
+       events: ["codebuild-project-build-state-failed"],
+       targets: [SNSTopic],
+       enabled: true,
+       detailType: codestarnotifications.DetailType.BASIC,
+       notificationRuleName: `${prefix}-codebuild`,
+     });
+ 
+     SNSTopic.grantPublish(new iam.ArnPrincipal(codebuildRule.notificationRuleArn));
+ 
+     const codeDeployRule = new codestarnotifications.NotificationRule(this, `${prefix}-codedeploy-notifications-rule`, {
+       source: deploy,
+       events: ["codebuild-project-build-state-failed"],
+       targets: [SNSTopic],
+       enabled: true,
+       detailType: codestarnotifications.DetailType.BASIC,
+       notificationRuleName: `${prefix}-codedeploy`,
+     });
+     SNSTopic.grantPublish(new iam.ArnPrincipal(codeDeployRule.notificationRuleArn)); */
 
     /* if (props.environment === "prod") {
       const codeDeployRule02 = new codestarnotifications.NotificationRule(this, `${prefix}-codedeploy-notifications-rule-02`, {
@@ -305,26 +306,11 @@ export class PipelineStack extends cdk.Stack {
         notificationRuleName: `${prefix}-us-west-1-codedeploy-02`,
       });
       cdk.Tags.of(codeDeployRule02).add(`Environment`, `${props.environment}`);
-      SNSTopic.grantPublish(new iam.ArnPrincipal(codeDeployRule01.notificationRuleArn));
+      SNSTopic.grantPublish(new iam.ArnPrincipal(codeDeployRule.notificationRuleArn));
     }  */
 
     /************************** TAGS *************************************/
 
-    const taggedResources = [
-      role,
-      securityGroup,
-      build,
-      deploymentLogGroup,
-      deploy01,
-      deploy02,
-      pipeline,
-      //SNSTopic,
-      //codePipelineRule,
-      //codebuildRule,
-      //codeDeployRule01,
-    ];
-    taggedResources.forEach((resource) => {
-      cdk.Tags.of(resource).add(`Environment`, `${props.environment}`);
-    });
+
   }
 }

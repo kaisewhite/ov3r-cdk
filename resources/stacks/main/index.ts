@@ -3,11 +3,11 @@ import { Construct } from "constructs";
 import * as elbv2 from "aws-cdk-lib/aws-elasticloadbalancingv2";
 
 import { SharedServicesStack } from "../shared";
-import { FargateStack as DefaultFargateService } from "../fargate/default";
-import { FargateStack as WebSvcFargateService } from "../fargate/web-svc";
-import { services } from "../../../properties/index";
+import { FargateStack as DefaultFargateService } from "../fargate/api";
+import { FargateStack as WebSvcFargateService } from "../fargate/platform";
+import { Service } from "../../../properties";
 import { addStandardTags } from "../../../helpers/tag_resources";
-import { PostgresStack } from "../fargate/postgres";
+import { PostgresStack } from "../fargate/database";
 
 export interface MainStackProps extends cdk.StackProps {
   readonly environment: string;
@@ -16,6 +16,7 @@ export interface MainStackProps extends cdk.StackProps {
   readonly domain: string;
   readonly imageTag: string;
   readonly whitelist?: Array<{ address: string; description: string }>;
+  readonly services: Service[];
 }
 export class MainStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: MainStackProps) {
@@ -51,92 +52,94 @@ export class MainStack extends cdk.Stack {
 
 
 
-    services.forEach((service) => {
+    props.services.forEach((service) => {
       /**************************** COMPUTE RESOURCES ********************************/
-      if (service.envs.includes(props.environment)) {
-        switch (service.name) {
-          case "postgres":
-            const postgres = new PostgresStack(this, `${props.environment}-${props.project}-${service.name}-cdk`, {
-              stackName: `${props.environment}-${props.project}-${service.name}-cdk`,
-              environment: props.environment,
-              project: props.project,
-              domain: props.domain,
-              hostHeader: service.properties[props.environment].hostHeader,
-              service: service.name,
-              memoryLimitMiB: service.properties[props.environment].memoryLimitMiB,
-              cpu: service.properties[props.environment].cpu,
-              vpcId: props.vpcId,
-              whitelist: props.whitelist,
-              env: { account: this.account, region: this.region },
-              description: "Postgres database running on docker/fargate",
-              tags: {
-                Environment: props.environment,
-                Project: props.project,
-                Service: service.name,
-              },
-            });
-            break;
-          case "comprehend-web-svc":
-            const webSvc = new WebSvcFargateService(this, `${props.environment}-${props.project}-${service.name}-cdk`, {
-              stackName: `${props.environment}-${props.project}-${service.name}-cdk`,
-              environment: props.environment,
-              project: props.project,
-              microService: true,
-              service: service.name,
-              description: "Rest API Service that communicates with RDS Postgres",
-              desiredCount: service.properties[props.environment].desiredCount,
-              secretVariables: service.secrets,
-              internetFacing: false,
-              healthCheck: service.healthCheck!,
-              targetGroupPriority: service.properties[props.environment].priority,
-              imageTag: props.imageTag,
-              domain: props.domain,
-              hostHeader: service.properties[props.environment].hostHeader,
-              github: service.github!,
-              vpcId: props.vpcId,
-              whitelist: props.whitelist,
-              memoryLimitMiB: service.properties[props.environment].memoryLimitMiB,
-              cpu: service.properties[props.environment].cpu,
-              env: { account: this.account, region: this.region },
-              tags: {
-                Environment: props.environment,
-                Project: props.project,
-                Service: service.name,
-              },
-            });
-            webSvc.addDependency(shared);
-            break;
-          default:
-            const defaultService = new DefaultFargateService(this, `${props.environment}-${props.project}-${service.name}-cdk`, {
-              stackName: `${props.environment}-${props.project}-${service.name}-cdk`,
-              environment: props.environment,
-              project: props.project,
-              microService: true,
-              service: service.name,
-              description: "Rest API Service that communicates with RDS Postgres",
-              desiredCount: service.properties[props.environment].desiredCount,
-              secretVariables: service.secrets,
-              internetFacing: false,
-              healthCheck: service.healthCheck!,
-              targetGroupPriority: service.properties[props.environment].priority,
-              imageTag: props.imageTag,
-              domain: props.domain,
-              hostHeader: service.properties[props.environment].hostHeader,
-              github: service.github!,
-              vpcId: props.vpcId,
-              whitelist: props.whitelist,
-              memoryLimitMiB: service.properties[props.environment].memoryLimitMiB,
-              cpu: service.properties[props.environment].cpu,
-              env: { account: this.account, region: this.region },
-              tags: {
-                Environment: props.environment,
-                Project: props.project,
-                Service: service.name,
-              },
-            });
-            defaultService.addDependency(shared);
-        }
+
+      switch (service.type) {
+        case "database":
+          const postgres = new PostgresStack(this, `${props.environment}-${props.project}-${service.name}-cdk`, {
+            stackName: `${props.environment}-${props.project}-${service.name}-cdk`,
+            environment: props.environment,
+            project: props.project,
+            subdomain: service.properties.subdomain,
+            domain: props.domain,
+            service: service.name,
+            memoryLimitMiB: service.properties.memoryLimitMiB,
+            cpu: service.properties.cpu,
+            vpcId: props.vpcId,
+            whitelist: props.whitelist,
+            env: { account: this.account, region: this.region },
+            description: "Postgres database running on docker/fargate",
+            tags: {
+              Environment: props.environment,
+              Project: props.project,
+              Service: service.name,
+            },
+          }).addDependency(shared);
+          break;
+        case "platform":
+          const webSvc = new WebSvcFargateService(this, `${props.environment}-${props.project}-${service.name}-cdk`, {
+            stackName: `${props.environment}-${props.project}-${service.name}-cdk`,
+            environment: props.environment,
+            project: props.project,
+            microService: true,
+            service: service.name,
+            type: service.type,
+            description: "Rest API Service that communicates with RDS Postgres",
+            desiredCount: service.properties.desiredCount,
+            secretVariables: service.secrets,
+            internetFacing: false,
+            healthCheck: service.healthCheck!,
+            targetGroupPriority: service.properties.priority,
+            imageTag: props.imageTag,
+            subdomain: service.properties.subdomain,
+            domain: props.domain,
+            github: service.github!,
+            vpcId: props.vpcId,
+            whitelist: props.whitelist,
+            memoryLimitMiB: service.properties.memoryLimitMiB,
+            cpu: service.properties.cpu,
+            env: { account: this.account, region: this.region },
+            tags: {
+              Environment: props.environment,
+              Project: props.project,
+              Service: service.name,
+            },
+          });
+          webSvc.addDependency(shared);
+          break;
+        default:
+          const defaultService = new DefaultFargateService(this, `${props.environment}-${props.project}-${service.name}-cdk`, {
+            stackName: `${props.environment}-${props.project}-${service.name}-cdk`,
+            environment: props.environment,
+            project: props.project,
+            microService: true,
+            service: service.name,
+            type: service.type,
+            description: "Rest API Service that communicates with RDS Postgres",
+            desiredCount: service.properties.desiredCount,
+            secretVariables: service.secrets,
+            internetFacing: false,
+            healthCheck: service.healthCheck!,
+            targetGroupPriority: service.properties.priority,
+            imageTag: props.imageTag,
+            subdomain: service.properties.subdomain,
+            domain: props.domain,
+            github: service.github!,
+            vpcId: props.vpcId,
+            whitelist: props.whitelist,
+            memoryLimitMiB: service.properties.memoryLimitMiB,
+            cpu: service.properties.cpu,
+            env: { account: this.account, region: this.region },
+            tags: {
+              Environment: props.environment,
+              Project: props.project,
+              Service: service.name,
+            },
+          });
+          defaultService.addDependency(shared);
       }
+
     });
   }
 }

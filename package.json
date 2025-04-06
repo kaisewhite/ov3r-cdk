@@ -1,8 +1,8 @@
 {
-  "name": "ov3r-cdk",
+  "name": "infra-aws-base-cdk",
   "version": "0.1.0",
   "bin": {
-    "ov3r-cdk": "bin/ov3r-cdk.js"
+    "infra-aws-base-cdk": "bin/infra-aws-base-cdk.js"
   },
   "scripts": {
     "build": "tsc",

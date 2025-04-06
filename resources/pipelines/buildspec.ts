@@ -18,7 +18,6 @@ export const NextJSDockerBuildSpec = ({ imageTag, ecrURI, region, secretVariable
         commands: [
           "echo Logging in to Amazon ECR...",
           "aws --version",
-          "echo $NEXT_PUBLIC_OPENAI_API_KEY",
           `aws ecr get-login-password --region ${region} | docker login --username AWS --password-stdin ${ecrURI}`,
         ],
       },

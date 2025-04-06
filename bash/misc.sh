@@ -5,7 +5,7 @@ export AWS_REGION="us-east-1"
 AWS_PROFILE="mostrom_mgmt"
 
 # Get stack names from `cdk list`, filter for "stage", and exclude ones starting with "prod"
-stack_names=$(cdk list --profile nih_ops | grep ov3r | grep -v 'prod' | awk -F ' ' '{print $1}')
+stack_names=$(cdk list --profile mostrom_mgmt | grep mostrom | grep -v 'prod' | awk -F ' ' '{print $1}')
 
 # Loop through the stack names
 for stack_name in $stack_names; do

@@ -1,95 +1,97 @@
 interface propertiesConfig {
-  hostHeader: string;
+  subdomain: string;
   priority: number;
   desiredCount: number;
   memoryLimitMiB: number;
   cpu: number;
 }
 
-interface Service {
+export interface Service {
   name: string;
+  description: string;
   type: string;
-  envs: string[];
-  github?: string
-  properties: { [key: string]: propertiesConfig };
+  ecrRepositoryRequired: boolean;
+  github?: string;
+  properties: propertiesConfig;
   secrets?: string[];
   healthCheck?: string;
 }
 
-export const services: Service[] = [
-  {
-    name: "postgres",
-    type: "fargate",
-    envs: ["dev"],
-    properties: {
-      dev: { hostHeader: "postgres.dev.ov3r.tech", priority: 1, memoryLimitMiB: 1024, cpu: 512, desiredCount: 1 },
-    },
-  },
-  {
-    name: "comprehend-query",
-    type: "fargate",
-    envs: ["dev"],
-    github: "comprehend-query",
-    properties: {
-      dev: { hostHeader: "query.dev.ov3r.tech", priority: 3, memoryLimitMiB: 1024, cpu: 512, desiredCount: 1 },
-      prod: { hostHeader: "query.ov3r.tech", priority: 3, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
-    },
-    healthCheck: "/healthcheck",
-    secrets: [
-      "PGHOST",
-      "PGPORT",
-      "PGUSER",
-      "PGPASSWORD",
-      "PGDATABASE",
-      "OPENAI_API_KEY",
-      "OPEN_AI_MODEL_NAME",
-      "REDIS_CACHE_HOST_ENDPOINT",
-      "DEFAULT_CACHE_TTL",
-      "SUPABASE_DATABASE_URL"
-    ],
-  },
+export interface Project {
+  name: string;
+  domain: string;
+  envs: string[];
+  slackWorkspaceId: string;
+  pipelineSlackChannelId: string;
+  services: Service[];
+}
 
+export const projects: Project[] = [
   {
-    name: "comprehend-web-svc",
-    type: "fargate",
-    envs: ["dev", "prod"],
-    github: "comprehend-web",
-    properties: {
-      dev: { hostHeader: "console.dev.ov3r.tech", priority: 1, memoryLimitMiB: 1024, cpu: 512, desiredCount: 1 },
-      prod: { hostHeader: "console.ov3r.tech", priority: 1, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
-    },
-    healthCheck: "/healthcheck",
-    secrets: [
-      "NEXT_PUBLIC_QUERY_API_URL",
-      "NEXT_PUBLIC_OPENAI_API_KEY",
-      "NEXT_PUBLIC_OPEN_AI_MODEL_NAME",
-      "NEXT_PUBLIC_REDIS_CACHE_HOST_ENDPOINT",
-      "NEXT_PUBLIC_DATABASE_URL",
-      "OPENAI_API_KEY",
+    name: "ov3r",
+    domain: "ov3r.tech",
+    envs: ["dev"],
+    slackWorkspaceId: "T05AXT2C65P",
+    pipelineSlackChannelId: "C08EL3YB490",
+    services: [
+      {
+        name: "postgres",
+        type: "database",
+        description: "Postgres database",
+        ecrRepositoryRequired: false,
+        properties: {
+          subdomain: "postgres",
+          priority: 1,
+          memoryLimitMiB: 1024,
+          cpu: 512,
+          desiredCount: 1,
+        },
+      },
     ],
   },
-  /*   {
-      name: "enframe-svc",
-      type: "fargate",
-      envs: ["dev", "prod"],
-      github: "enframe",
-      properties: {
-        dev: { hostHeader: "enframe.dev.ov3r.tech", priority: 7, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
-        prod: { hostHeader: "enframe.ov3r.tech", priority: 7, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0 },
+  {
+    name: "mostrom",
+    domain: "mostrom.tech",
+    envs: ["dev"],
+    slackWorkspaceId: "T05AXT2C65P",
+    pipelineSlackChannelId: "C08M9NN4WHX",
+    services: [
+      {
+        name: "ai-chatbot",
+        type: "platform",
+        description: "NextJS Application - Frontend interface for chatbot",
+        ecrRepositoryRequired: true,
+        github: "arqlo-ai-chatbot",
+        properties: {
+          subdomain: "chat", priority: 1, memoryLimitMiB: 1024, cpu: 512, desiredCount: 0
+
+        },
+        healthCheck: "/healthcheck",
+        secrets: [
+          "AUTH_SECRET",
+          "OPENAI_API_KEY",
+          "POSTGRES_URL",
+          "NEXTAUTH_URL",
+          "METADATA_BASE_URL"
+        ],
       },
-      healthCheck: "/healthCheck",
-      secrets: [
-        "PGHOST",
-        "PGPORT",
-        "PGUSER",
-        "PGPASSWORD",
-        "PGDATABASE",
-        "OPENAI_API_KEY",
-        "OPEN_AI_MODEL_NAME",
-        "REDIS_CACHE_HOST_ENDPOINT",
-        "NEXT_PUBLIC_APP_ENV",
-        "DEFAULT_CACHE_TTL",
-        "NEXT_PUBLIC_OPEN_WEATHER_API_KEY",
-      ],
-    }, */
-];
+      {
+        name: "postgres",
+        type: "database",
+        description: "Postgres database",
+        ecrRepositoryRequired: false,
+        properties: {
+          subdomain: "postgres",
+          priority: 1,
+          memoryLimitMiB: 1024,
+          cpu: 512,
+          desiredCount: 1,
+        },
+      },
+    ],
+  },
+] as const;
+
+
+
+

@@ -1,13 +1,13 @@
 // import * as cdk from 'aws-cdk-lib';
 // import { Template } from 'aws-cdk-lib/assertions';
-// import * as Ov3RCdk from '../lib/ov3r-cdk-stack';
+// import * as InfraAwsBaseCdk from '../lib/infra-aws-base-cdk-stack';
 
 // example test. To run these tests, uncomment this file along with the
 // example resource in lib/ov3r-cdk-stack.ts
 test('SQS Queue Created', () => {
 //   const app = new cdk.App();
 //     // WHEN
-//   const stack = new Ov3RCdk.Ov3RCdkStack(app, 'MyTestStack');
+//   const stack = new InfraAwsBaseCdk.InfraAwsBaseCdkStack(app, 'MyTestStack');
 //     // THEN
 //   const template = Template.fromStack(stack);
 
