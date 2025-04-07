@@ -16,13 +16,14 @@ import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as codestarnotifications from "aws-cdk-lib/aws-codestarnotifications";
 import * as s3 from "aws-cdk-lib/aws-s3";
-
+import { projects } from "../../properties";
 
 import { dockerBuildSpec, ecsDeploymentBuildSpec, NextJSDockerBuildSpec } from "./buildspec";
 
 export interface PipelineStackProps extends cdk.StackProps {
   readonly project: string;
-  readonly service: string
+  readonly service: string;
+  //readonly githubSourceOwner: string;
   readonly type: string;
   readonly environment: string;
   readonly targetBranch: string;
@@ -54,7 +55,7 @@ export class PipelineStack extends cdk.Stack {
     const sourceArtifact = new codepipeline.Artifact();
 
     const gitHubSource = codebuild.Source.gitHub({
-      owner: `${process.env.GITHUB_SOURCE_OWNER}`,
+      owner: projects.find((project) => project.name === props.project)?.githubSourceOwner!,
       repo: props.github,
       webhook: true, // optional, default: true if `webhookFilters` were provided, false otherwise
       webhookFilters: [codebuild.FilterGroup.inEventOf(codebuild.EventAction.PUSH).andBranchIs(`${props.targetBranch}`)], // optional, by default all pushes and Pull Requests will trigger a build
@@ -62,7 +63,6 @@ export class PipelineStack extends cdk.Stack {
     // Retrieve the S3 bucket used to store CodePipeline artifacts using its bucket name
 
     // Retrieve the S3 bucket used to store CodePipeline artifacts using its bucket name
-
 
     const role = new iam.Role(this, `${prefix}-pipeline-role`, {
       assumedBy: new iam.CompositePrincipal(
@@ -117,9 +117,10 @@ export class PipelineStack extends cdk.Stack {
       return environmentVariables;
     };
 
-    const buildSpec = props.type === "platform"
-      ? NextJSDockerBuildSpec({ imageTag: props.imageTag, ecrURI: props.ecrURI, region: this.region, secretVariables: props.secretVariables! })
-      : dockerBuildSpec({ imageTag: props.imageTag, ecrURI: props.ecrURI, region: this.region });
+    const buildSpec =
+      props.type === "platform"
+        ? NextJSDockerBuildSpec({ imageTag: props.imageTag, ecrURI: props.ecrURI, region: this.region, secretVariables: props.secretVariables! })
+        : dockerBuildSpec({ imageTag: props.imageTag, ecrURI: props.ecrURI, region: this.region });
 
     const build = new codebuild.Project(this, `${prefix}-codebuild-project`, {
       source: gitHubSource,
@@ -201,13 +202,13 @@ export class PipelineStack extends cdk.Stack {
 
     const sourceAction = new codepipeline_actions.CodeStarConnectionsSourceAction({
       actionName: "github",
-      owner: `${process.env.GITHUB_SOURCE_OWNER}`,
+      owner: projects.find((project) => project.name === props.project)?.githubSourceOwner!,
       repo: props.github,
       branch: props.targetBranch,
       output: sourceArtifact,
       role: role,
       triggerOnPush: true,
-      connectionArn: `${process.env.CDK_CODESTAR_CONNECTION_ARN}`,
+      connectionArn: projects.find((project) => project.name === props.project)?.codestarConnectionArn!,
     });
 
     const buildAction = new codepipeline_actions.CodeBuildAction({
@@ -258,43 +259,43 @@ export class PipelineStack extends cdk.Stack {
       cdk.Fn.importValue(`${props.project}-codepipeline-sns-topic-arn`)
     );
     //https://docs.aws.amazon.com/dtconsole/latest/userguide/concepts.html#events-ref-pipeline
-    /*  const codePipelineRule = new codestarnotifications.NotificationRule(this, `${prefix}-codepipeline-notifications-rule`, {
-       source: pipeline, //build,
-       events: [
-         "codepipeline-pipeline-manual-approval-needed",
-         "codepipeline-pipeline-pipeline-execution-failed",
-         "codepipeline-pipeline-action-execution-failed",
-         "codepipeline-pipeline-stage-execution-failed",
-         "codepipeline-pipeline-pipeline-execution-started",
-       ],
-       targets: [SNSTopic],
-       enabled: true,
-       detailType: codestarnotifications.DetailType.FULL,
-       notificationRuleName: `${prefix}-codepipeline`,
-     });
- 
-     SNSTopic.grantPublish(new iam.ArnPrincipal(codePipelineRule.notificationRuleArn));
- 
-     const codebuildRule = new codestarnotifications.NotificationRule(this, `${prefix}-codebuild-notifications-rule`, {
-       source: build,
-       events: ["codebuild-project-build-state-failed"],
-       targets: [SNSTopic],
-       enabled: true,
-       detailType: codestarnotifications.DetailType.BASIC,
-       notificationRuleName: `${prefix}-codebuild`,
-     });
- 
-     SNSTopic.grantPublish(new iam.ArnPrincipal(codebuildRule.notificationRuleArn));
- 
-     const codeDeployRule = new codestarnotifications.NotificationRule(this, `${prefix}-codedeploy-notifications-rule`, {
-       source: deploy,
-       events: ["codebuild-project-build-state-failed"],
-       targets: [SNSTopic],
-       enabled: true,
-       detailType: codestarnotifications.DetailType.BASIC,
-       notificationRuleName: `${prefix}-codedeploy`,
-     });
-     SNSTopic.grantPublish(new iam.ArnPrincipal(codeDeployRule.notificationRuleArn)); */
+    const codePipelineRule = new codestarnotifications.NotificationRule(this, `${prefix}-codepipeline-notifications-rule`, {
+      source: pipeline, //build,
+      events: [
+        "codepipeline-pipeline-manual-approval-needed",
+        "codepipeline-pipeline-pipeline-execution-failed",
+        "codepipeline-pipeline-action-execution-failed",
+        "codepipeline-pipeline-stage-execution-failed",
+        "codepipeline-pipeline-pipeline-execution-started",
+      ],
+      targets: [SNSTopic],
+      enabled: true,
+      detailType: codestarnotifications.DetailType.FULL,
+      notificationRuleName: `${prefix}-codepipeline`,
+    });
+
+    SNSTopic.grantPublish(new iam.ArnPrincipal(codePipelineRule.notificationRuleArn));
+
+    const codebuildRule = new codestarnotifications.NotificationRule(this, `${prefix}-codebuild-notifications-rule`, {
+      source: build,
+      events: ["codebuild-project-build-state-failed"],
+      targets: [SNSTopic],
+      enabled: true,
+      detailType: codestarnotifications.DetailType.BASIC,
+      notificationRuleName: `${prefix}-codebuild`,
+    });
+
+    SNSTopic.grantPublish(new iam.ArnPrincipal(codebuildRule.notificationRuleArn));
+
+    const codeDeployRule = new codestarnotifications.NotificationRule(this, `${prefix}-codedeploy-notifications-rule`, {
+      source: deploy,
+      events: ["codebuild-project-build-state-failed"],
+      targets: [SNSTopic],
+      enabled: true,
+      detailType: codestarnotifications.DetailType.BASIC,
+      notificationRuleName: `${prefix}-codedeploy`,
+    });
+    SNSTopic.grantPublish(new iam.ArnPrincipal(codeDeployRule.notificationRuleArn));
 
     /* if (props.environment === "prod") {
       const codeDeployRule02 = new codestarnotifications.NotificationRule(this, `${prefix}-codedeploy-notifications-rule-02`, {
@@ -307,10 +308,8 @@ export class PipelineStack extends cdk.Stack {
       });
       cdk.Tags.of(codeDeployRule02).add(`Environment`, `${props.environment}`);
       SNSTopic.grantPublish(new iam.ArnPrincipal(codeDeployRule.notificationRuleArn));
-    }  */
+    } 
 
     /************************** TAGS *************************************/
-
-
   }
 }

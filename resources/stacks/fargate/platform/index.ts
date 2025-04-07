@@ -69,16 +69,18 @@ export class FargateStack extends cdk.Stack {
     addStandardTags(this, taggingProps);
 
     /**
-       * KMS Encryption Configuration
-       * Sets up encryption key for sensitive data
-       */
+     * KMS Encryption Configuration
+     * Sets up encryption key for sensitive data
+     */
     const kmsKey = new kms.Key(this, `${prefix}-rds-kms-key`, {
       description: `KMS key for ${prefix}`,
       enableKeyRotation: true,
       alias: `${prefix}-rds-kms-key`,
     });
+    addStandardTags(kmsKey, taggingProps);
 
     kmsKey.grantDecrypt(new iam.AccountPrincipal(process.env.CDK_DEFAULT_ACCOUNT!));
+    kmsKey.grantDecrypt(new iam.ArnPrincipal(`arn:aws:iam::${process.env.CDK_DEFAULT_ACCOUNT}:role/${prefix}-pipeline-role`));
 
     const secrets = new secretsmanager.Secret(this, `${prefix}-secret`, {
       secretName: prefix,
@@ -90,6 +92,18 @@ export class FargateStack extends cdk.Stack {
       description: `Environment Variables for ${props.service} lambda fn`,
     });
     addStandardTags(secrets, taggingProps);
+
+    /**
+     * Grant cross-account access to secrets for pipeline role
+     */
+    secrets.addToResourcePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        principals: [new iam.ArnPrincipal(`arn:aws:iam::${process.env.CDK_DEFAULT_ACCOUNT}:role/${prefix}-pipeline-role`)],
+        actions: ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"],
+        resources: ["*"],
+      })
+    );
 
     // Generate container secrets based on the specified list of secret names.
     const generateSecrets = (list: string[] | undefined) => {
@@ -118,51 +132,25 @@ export class FargateStack extends cdk.Stack {
 
     /**************************************************************************************** */
 
-
     /**
-           * IAM Role and Permissions Configuration
-           * Sets up IAM roles and policies for ECS task execution
-           */
-    const ecsTaskRole = new iam.Role(this, `${prefix}-ecs-task-role`, {
+     * IAM Role and Permissions Configuration
+     * Sets up IAM roles and policies for ECS task execution
+     */
+    const role = new iam.Role(this, `${prefix}-ecs-task-role`, {
       assumedBy: new iam.CompositePrincipal(
         new iam.AccountPrincipal(`${process.env.CDK_DEFAULT_ACCOUNT}`),
         new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
-        new iam.ServicePrincipal("ecs.amazonaws.com"),
+        new iam.ServicePrincipal("ecs.amazonaws.com")
       ),
       roleName: `${prefix}-ecs-task-role`,
     });
-    addStandardTags(ecsTaskRole, taggingProps);
+    addStandardTags(role, taggingProps);
 
-    secrets.grantRead(ecsTaskRole);
-    ecrRepository.grantPullPush(new iam.ArnPrincipal(ecsTaskRole.roleArn));
+    secrets.grantRead(role);
+    ecrRepository.grantPullPush(new iam.ArnPrincipal(role.roleArn));
 
-    /**
-     * Grant cross-account access to secrets for pipeline role
-     */
-    secrets.addToResourcePolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      principals: [new iam.ArnPrincipal(`arn:aws:iam::${process.env.CDK_DEFAULT_ACCOUNT}:role/${prefix}-pipeline-role`)],
-      actions: ['secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret'],
-      resources: ['*']
-    }));
-
-    /**
-     * Configure cross-account image pulling permissions
-     */
-    ecsTaskRole.addToPrincipalPolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        resources: [`arn:aws:iam::${process.env.CDK_DEFAULT_ACCOUNT}:role/*`],
-        actions: ["sts:AssumeRole"],
-      })
-    );
-
-    ecsTaskRole.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName("service-role/AmazonECSTaskExecutionRolePolicy"));
-
-    /**
-     * Grant additional permissions for logs, S3, KMS, and ECR operations
-     */
-    ecsTaskRole.addToPrincipalPolicy(
+    // Grant AWS service permissions
+    role.addToPrincipalPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         resources: ["*"],
@@ -173,7 +161,43 @@ export class FargateStack extends cdk.Stack {
           "ecr:GetDownloadUrlForLayer",
           "ecr:BatchGetImage",
           "ecr:BatchCheckLayerAvailability",
-          "ecs:UpdateService", "ecs:DescribeServices", "ecs:WaitUntilServiceStable"
+          "ecs:UpdateService",
+          "ecs:DescribeServices",
+          "ecs:WaitUntilServiceStable",
+        ],
+      })
+    );
+
+    /**
+     * Configure cross-account image pulling permissions
+     */
+    role.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        resources: [`arn:aws:iam::${process.env.CDK_DEFAULT_ACCOUNT}:role/*`],
+        actions: ["sts:AssumeRole"],
+      })
+    );
+
+    role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName("service-role/AmazonECSTaskExecutionRolePolicy"));
+
+    /**
+     * Grant additional permissions for logs, S3, KMS, and ECR operations
+     */
+    role.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        resources: ["*"],
+        actions: [
+          "logs:*",
+          "s3:*",
+          "kms:*",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+          "ecr:BatchCheckLayerAvailability",
+          "ecs:UpdateService",
+          "ecs:DescribeServices",
+          "ecs:WaitUntilServiceStable",
         ],
       })
     );
@@ -204,11 +228,12 @@ export class FargateStack extends cdk.Stack {
 
     const taskDef = new ecs.FargateTaskDefinition(this, `${prefix}-fargate-task-definition`, {
       family: prefix,
-      executionRole: ecsTaskRole,
-      taskRole: ecsTaskRole,
+      executionRole: role,
+      taskRole: role,
       memoryLimitMiB: props.memoryLimitMiB,
       cpu: props.cpu,
     });
+    addStandardTags(taskDef, taggingProps);
 
     const container = taskDef.addContainer(`${prefix}-fargate-container`, {
       image: ecs.ContainerImage.fromEcrRepository(ecrRepository, `${props.imageTag}`),
@@ -236,9 +261,7 @@ export class FargateStack extends cdk.Stack {
       ],
       secrets: generateSecrets(props.secretVariables),
       environment: {
-
         PORT: `80`,
-
       },
     });
 
@@ -314,7 +337,7 @@ export class FargateStack extends cdk.Stack {
         day: "*",
       }),
       enabled: false,
-      ruleName: `${props.service}-start-ecs-service`,
+      ruleName: `${prefix}-start-ecs-service`,
       description: `Start Fargate Service service at 05:00 EST (10:00 UTC)`,
       targets: [
         new targets.AwsApi({
@@ -366,7 +389,6 @@ export class FargateStack extends cdk.Stack {
 
     /***************************** TARGET GROUP *****************************/
 
-
     const targetGroup = new elbv2.ApplicationTargetGroup(this, `${prefix}-target-group`, {
       port: 80,
       vpc: vpc,
@@ -407,24 +429,23 @@ export class FargateStack extends cdk.Stack {
     addStandardTags(targetGroup, taggingProps);
     addStandardTags(HTTPSListener, taggingProps);
 
-
     const hostedZone = route53.HostedZone.fromHostedZoneAttributes(this, `${prefix}-imported-hosted-zone`, {
       hostedZoneId: cdk.Fn.importValue(`${props.environment}-${props.project}-hosted-zone-id`),
-      zoneName: `${props.environment}.${props.domain}`
+      zoneName: `${props.environment}.${props.domain}`,
     });
-    new route53.CnameRecord(this, `${prefix}-route53-cname-record`, {
+    const cnameRecord = new route53.CnameRecord(this, `${prefix}-route53-cname-record`, {
       domainName: cdk.Fn.importValue(`${props.environment}-${props.project}-load-balancer-dns`),
       zone: hostedZone,
       comment: `Create the CNAME record for ${prefix} in ${props.project}.internal`,
-      recordName: props.environment === 'prod' ? `${props.subdomain}.${props.domain}` : `${props.subdomain}.${props.environment}.${props.domain}`,
+      recordName: props.environment === "prod" ? `${props.subdomain}.${props.domain}` : `${props.subdomain}.${props.environment}.${props.domain}`,
       ttl: cdk.Duration.minutes(30),
     });
+    addStandardTags(cnameRecord, taggingProps);
 
     /************************************ CODEPIPELINE STACK ******************************************** */
     /**
      * Adding if condition so that this stack only gets deployed once
      */
-
 
     const pipelineStack = new PipelineStack(this, `${prefix}-pipeline-cdk`, {
       stackName: `${prefix}-pipeline-cdk`,
@@ -439,7 +460,7 @@ export class FargateStack extends cdk.Stack {
       ecsCluster: props.project,
       ecsService: service.serviceName,
       desiredCount: props.desiredCount,
-      roleARN: ecsTaskRole.roleArn,
+      roleARN: role.roleArn,
       environment: props.environment,
       github: props.github,
       ecrURI: `${process.env.CDK_DEFAULT_ACCOUNT}.dkr.ecr.us-east-1.amazonaws.com/${props.project}-${props.service}`, //ecrRepository.repositoryUri,
@@ -449,6 +470,5 @@ export class FargateStack extends cdk.Stack {
     });
 
     addStandardTags(pipelineStack, taggingProps);
-
   }
 }

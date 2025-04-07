@@ -12,7 +12,7 @@ export const NextJSDockerBuildSpec = ({ imageTag, ecrURI, region, secretVariable
     version: "0.2",
     phases: {
       install: {
-        "runtime-versions": { nodejs: "22" },
+        "runtime-versions": { nodejs: "20" },
       },
       pre_build: {
         commands: [
@@ -47,7 +47,7 @@ export const dockerBuildSpec = ({ imageTag, ecrURI, region }: dockerProps) => {
     version: "0.2",
     phases: {
       install: {
-        "runtime-versions": { nodejs: "22" },
+        "runtime-versions": { nodejs: "20" },
       },
       pre_build: {
         commands: [
