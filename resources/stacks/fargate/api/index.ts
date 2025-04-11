@@ -171,6 +171,9 @@ export class FargateStack extends cdk.Stack {
           "ecs:UpdateService",
           "ecs:DescribeServices",
           "ecs:WaitUntilServiceStable",
+          "ecs:DescribeTaskDefinition",
+          "ecs:RegisterTaskDefinition",
+          "iam:PassRole",
         ],
       })
     );
@@ -205,6 +208,8 @@ export class FargateStack extends cdk.Stack {
           "ecs:UpdateService",
           "ecs:DescribeServices",
           "ecs:WaitUntilServiceStable",
+          "ecs:DescribeTaskDefinition",
+          "ecs:RegisterTaskDefinition",
         ],
       })
     );
@@ -305,12 +310,7 @@ export class FargateStack extends cdk.Stack {
       healthCheckGracePeriod: cdk.Duration.seconds(60),
       minHealthyPercent: 50,
       maxHealthyPercent: 200,
-      capacityProviderStrategies: [
-        {
-          capacityProvider: "FARGATE",
-          weight: 1,
-        },
-      ],
+      capacityProviderStrategies: capacityProviderStrategies,
     });
     addStandardTags(service, taggingProps);
 

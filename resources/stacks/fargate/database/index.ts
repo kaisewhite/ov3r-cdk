@@ -174,6 +174,7 @@ export class PostgresStack extends cdk.Stack {
       performanceMode: efs.PerformanceMode.GENERAL_PURPOSE,
       throughputMode: efs.ThroughputMode.BURSTING,
     });
+    fileSystem.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
     addStandardTags(fileSystem, taggingProps);
 
     // Tag EFS filesystem

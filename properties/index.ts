@@ -29,7 +29,7 @@ export interface Project {
 }
 
 export const projects: Project[] = [
-  {
+  /*   {
     name: "ov3r",
     domain: "ov3r.tech",
     githubSourceOwner: "kaisewhite",
@@ -52,7 +52,7 @@ export const projects: Project[] = [
         },
       },
     ],
-  },
+  }, */
   {
     name: "mostrom",
     domain: "mostrom.tech",
@@ -73,10 +73,10 @@ export const projects: Project[] = [
           priority: 1,
           memoryLimitMiB: 1024,
           cpu: 512,
-          desiredCount: 0,
+          desiredCount: 1,
         },
         healthCheck: "/healthcheck",
-        secrets: ["AUTH_SECRET", "OPENAI_API_KEY", "POSTGRES_URL", "NEXTAUTH_URL", "METADATA_BASE_URL", "NEXT_PUBLIC_APP_ENV"],
+        secrets: ["AUTH_SECRET", "OPENAI_API_KEY", "POSTGRES_URL", "NEXTAUTH_URL", "METADATA_BASE_URL"],
       },
       {
         name: "postgres",

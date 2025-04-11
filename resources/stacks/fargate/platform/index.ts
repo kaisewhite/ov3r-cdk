@@ -164,6 +164,9 @@ export class FargateStack extends cdk.Stack {
           "ecs:UpdateService",
           "ecs:DescribeServices",
           "ecs:WaitUntilServiceStable",
+          "ecs:DescribeTaskDefinition",
+          "ecs:RegisterTaskDefinition",
+          "iam:PassRole",
         ],
       })
     );
@@ -262,6 +265,7 @@ export class FargateStack extends cdk.Stack {
       secrets: generateSecrets(props.secretVariables),
       environment: {
         PORT: `80`,
+        NEXT_PUBLIC_APP_NODE_ENV: "production",
       },
     });
 
@@ -275,7 +279,7 @@ export class FargateStack extends cdk.Stack {
      */
     const capacityProviderStrategies = [
       {
-        capacityProvider: "FARGATE_SPOT",
+        capacityProvider: "FARGATE",
         weight: props.desiredCount === 0 ? 1 : props.desiredCount,
       },
     ];
@@ -336,7 +340,7 @@ export class FargateStack extends cdk.Stack {
         month: "*",
         day: "*",
       }),
-      enabled: false,
+      enabled: true,
       ruleName: `${prefix}-start-ecs-service`,
       description: `Start Fargate Service service at 05:00 EST (10:00 UTC)`,
       targets: [
@@ -362,7 +366,7 @@ export class FargateStack extends cdk.Stack {
     const stopRule = new events.Rule(this, `${prefix}-stop-ecs-service-rule`, {
       schedule: events.Schedule.cron({
         minute: "0",
-        hour: "2", // 04:00 UTC = 10:00 EST (previous day)
+        hour: "10", //6pm
         month: "*",
         day: "*",
       }),

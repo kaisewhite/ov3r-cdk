@@ -117,10 +117,13 @@ export class PipelineStack extends cdk.Stack {
       return environmentVariables;
     };
 
-    const buildSpec =
-      props.type === "platform"
+    const buildSpec = dockerBuildSpec({ imageTag: props.imageTag, ecrURI: props.ecrURI, region: this.region });
+
+    /**
+     * props.type === "platform"
         ? NextJSDockerBuildSpec({ imageTag: props.imageTag, ecrURI: props.ecrURI, region: this.region, secretVariables: props.secretVariables! })
-        : dockerBuildSpec({ imageTag: props.imageTag, ecrURI: props.ecrURI, region: this.region });
+        :
+     */
 
     const build = new codebuild.Project(this, `${prefix}-codebuild-project`, {
       source: gitHubSource,
@@ -133,10 +136,10 @@ export class PipelineStack extends cdk.Stack {
       cache: codebuild.Cache.local(codebuild.LocalCacheMode.CUSTOM, codebuild.LocalCacheMode.DOCKER_LAYER),
       buildSpec: buildSpec,
       environment: {
-        computeType: codebuild.ComputeType.SMALL,
+        computeType: codebuild.ComputeType.MEDIUM,
         buildImage: codebuild.LinuxBuildImage.STANDARD_7_0,
         privileged: true,
-        environmentVariables: props.type === "platform" ? generateSecrets(props.secretVariables) : undefined,
+        //environmentVariables: props.type === "platform" ? generateSecrets(props.secretVariables) : undefined,
       },
       logging: {
         cloudWatch: {
@@ -168,8 +171,16 @@ export class PipelineStack extends cdk.Stack {
         roleARN: props.roleARN,
         desiredCount: props.desiredCount,
         region: "us-east-1",
+        ecrURI: props.ecrURI,
+        imageTag: props.imageTag,
+        repoName: `${props.project}-${props.service}`,
+        environment: props.environment,
       }),
-      environment: { computeType: codebuild.ComputeType.SMALL, buildImage: codebuild.LinuxBuildImage.STANDARD_7_0, privileged: true },
+      environment: {
+        computeType: codebuild.ComputeType.SMALL,
+        buildImage: codebuild.LinuxBuildImage.STANDARD_7_0,
+        privileged: true,
+      },
       logging: {
         cloudWatch: {
           logGroup: deploymentLogGroup,
@@ -178,27 +189,6 @@ export class PipelineStack extends cdk.Stack {
       timeout: cdk.Duration.minutes(15),
       badge: false,
     });
-
-    /*     const deploy02 = new codebuild.Project(this, `${prefix}-codebuild-deploy-project-02`, {
-          source: gitHubSource,
-          projectName: `${prefix}-deploy-02`,
-          description: `Deployment Project for: ${prefix} us-east-1`,
-          buildSpec: ecsDeploymentBuildSpec({
-            cluster: props.ecsCluster,
-            service: props.ecsService,
-            roleARN: props.roleARN,
-            desiredCount: props.desiredCount,
-            region: "us-west-1",
-          }),
-          environment: { computeType: codebuild.ComputeType.SMALL, buildImage: codebuild.LinuxBuildImage.STANDARD_7_0, privileged: true },
-          logging: {
-            cloudWatch: {
-              logGroup: deploymentLogGroup,
-            },
-          },
-          timeout: cdk.Duration.minutes(15),
-          badge: false,
-        }); */
 
     const sourceAction = new codepipeline_actions.CodeStarConnectionsSourceAction({
       actionName: "github",
@@ -230,14 +220,6 @@ export class PipelineStack extends cdk.Stack {
       input: sourceArtifact,
       type: codepipeline_actions.CodeBuildActionType.BUILD,
     });
-
-    /* const deployAction02 = new codepipeline_actions.CodeBuildAction({
-      actionName: "us-west-1",
-      role: role,
-      project: deploy02,
-      input: sourceArtifact,
-      type: codepipeline_actions.CodeBuildActionType.BUILD,
-    }); */
 
     const pipeline = new codepipeline.Pipeline(this, `${prefix}-pipeline`, {
       pipelineName: `${prefix}`,
